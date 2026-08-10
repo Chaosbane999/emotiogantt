@@ -88,6 +88,37 @@
     });
   }
 
+  // shared person-filter chips; stores EXCLUDED ids so new people default to shown
+  function chipFilter(key, { includeUnassigned = false } = {}) {
+    const excluded = new Set(JSON.parse(localStorage.getItem(key) || '[]'));
+    const chip = (val, dotColor, label) => `
+      <button class="chip ${excluded.has(val) ? '' : 'on'}" data-chip="${val}">
+        <span class="dot" style="background:${dotColor}"></span>${label}
+        <span class="tick">${excluded.has(val) ? '' : '✓'}</span>
+      </button>`;
+    const html = S.people.length ? `<div class="chip-row">
+        <span class="muted" style="font-size:13px">Show:</span>
+        <button class="chip ${excluded.size === 0 ? 'on' : ''}" data-chip="all">Everyone</button>
+        ${S.people.map(pp => chip(pp.id, pp.color, esc(pp.name))).join('')}
+        ${includeUnassigned ? chip('u', 'var(--ink-soft)', 'Unassigned') : ''}
+      </div>` : '';
+    const wire = () => {
+      view.querySelectorAll('[data-chip]').forEach(b => b.addEventListener('click', () => {
+        if (b.dataset.chip === 'all') {
+          localStorage.removeItem(key);
+        } else {
+          const id = b.dataset.chip === 'u' ? 'u' : Number(b.dataset.chip);
+          if (excluded.has(id)) excluded.delete(id); else excluded.add(id);
+          localStorage.setItem(key, JSON.stringify([...excluded]));
+        }
+        route();
+      }));
+    };
+    const showsTask = (t) =>
+      t.person_id ? !excluded.has(t.person_id) : !excluded.has('u');
+    return { excluded, html, wire, showsTask };
+  }
+
   // ---------- views ----------
   function setNav(name) {
     document.querySelectorAll('[data-nav]').forEach(a =>
@@ -98,10 +129,11 @@
   function renderToday() {
     setNav('today');
     const today = D.today();
+    const filter = chipFilter('cp_td_excl', { includeUnassigned: true });
     const cpms = new Map(S.projects.map(p => [p.id, cpmFor(p.id)]));
     const open = S.tasks.filter(t => {
       const p = projById(t.project_id);
-      return !t.done && p && !p.archived;
+      return !t.done && p && !p.archived && filter.showsTask(t);
     });
 
     const focus = open
@@ -134,6 +166,7 @@
     view.innerHTML = `
       <h1>Today</h1>
       <p class="subtitle">${new Date().toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' })}</p>
+      ${filter.html}
       <h2>Focus now</h2>
       ${focus.length
         ? `<div class="focus-list">${focus.map(item).join('')}</div>`
@@ -150,6 +183,7 @@
           </div>`;
         }).join('')}</div>` : ''}
     `;
+    filter.wire();
     view.querySelectorAll('[data-done]').forEach(cb =>
       cb.addEventListener('change', () =>
         mutate('PUT', `/api/tasks/${cb.dataset.done}`, { done: 1 })));
@@ -371,36 +405,17 @@
   function renderTimeline() {
     setNav('timeline');
     const active = S.projects.filter(p => !p.archived);
-    // stored as EXCLUDED ids so newly added people default to shown
-    const excluded = new Set(JSON.parse(localStorage.getItem('cp_tl_excl') || '[]'));
-    const shown = S.people.filter(pp => !excluded.has(pp.id));
+    const filter = chipFilter('cp_tl_excl');
+    const shown = S.people.filter(pp => !filter.excluded.has(pp.id));
 
     view.innerHTML = `
       <h1>Timeline</h1>
       <p class="subtitle">All projects side by side, with a lane for each person's work.
         <span style="color:var(--critical);font-weight:600">Coral</span> = they're booked on two projects at once.
         Amber line = due date.</p>
-      ${S.people.length ? `<div class="chip-row">
-        <span class="muted" style="font-size:13px">Show:</span>
-        <button class="chip ${excluded.size === 0 ? 'on' : ''}" data-chip="all">Everyone</button>
-        ${S.people.map(pp => `
-          <button class="chip ${excluded.has(pp.id) ? '' : 'on'}" data-chip="${pp.id}">
-            <span class="dot" style="background:${pp.color}"></span>${esc(pp.name)}
-            <span class="tick">${excluded.has(pp.id) ? '' : '✓'}</span>
-          </button>`).join('')}
-      </div>` : ''}
+      ${filter.html}
       <div id="portfolioHost"></div>`;
-
-    view.querySelectorAll('[data-chip]').forEach(b => b.addEventListener('click', () => {
-      if (b.dataset.chip === 'all') {
-        localStorage.removeItem('cp_tl_excl');
-      } else {
-        const id = Number(b.dataset.chip);
-        if (excluded.has(id)) excluded.delete(id); else excluded.add(id);
-        localStorage.setItem('cp_tl_excl', JSON.stringify([...excluded]));
-      }
-      route();
-    }));
+    filter.wire();
 
     if (!active.length) {
       document.getElementById('portfolioHost').innerHTML =
