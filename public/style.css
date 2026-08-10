@@ -72,7 +72,8 @@ body {
 }
 .icon-btn:hover { color: var(--ink); }
 
-main { max-width: 1200px; margin: 0 auto; padding: 32px 28px 80px; }
+main { width: 100%; margin: 0; padding: 32px 36px 80px; }
+main .narrow { max-width: 920px; }
 
 h1 { font-size: 24px; font-weight: 700; margin: 0 0 4px; letter-spacing: -.01em; }
 h2 { font-size: 16px; font-weight: 650; margin: 28px 0 12px; color: var(--ink); }

@@ -206,6 +206,7 @@
     };
 
     view.innerHTML = `
+      <div class="narrow">
       <h1>Today</h1>
       <p class="subtitle">${new Date().toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' })}</p>
       ${filter.html}
@@ -224,6 +225,7 @@
             ${countdownChip(t.end, false)}
           </div>`;
         }).join('')}</div>` : ''}
+      </div>
     `;
     filter.wire();
     view.querySelectorAll('[data-done]').forEach(cb =>
