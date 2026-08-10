@@ -1,6 +1,6 @@
 services:
   emotiogantt:
-    build: https://github.com/agiadaccount-oss/emotiogantt.git
+    build: https://github.com/Chaosbane999/emotiogantt.git
     volumes:
       - emotiogantt-data:/data
     environment:
