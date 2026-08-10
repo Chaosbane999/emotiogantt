@@ -56,4 +56,10 @@ CREATE TABLE IF NOT EXISTS deps (
 );
 `);
 
+// migration: per-task progress percent (0-100); done tasks count as 100
+try {
+  db.exec('ALTER TABLE tasks ADD COLUMN progress INTEGER NOT NULL DEFAULT 0');
+  db.exec('UPDATE tasks SET progress = 100 WHERE done = 1');
+} catch (e) { /* column already exists */ }
+
 module.exports = db;

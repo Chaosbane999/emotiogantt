@@ -153,11 +153,14 @@
       const crit = cpms.get(t.project_id).get(t.id)?.critical;
       const proj = projById(t.project_id);
       const who = personName(t.person_id);
+      const dur = D.diff(t.start, t.end) + 1;
+      const inc = Math.ceil(100 / dur);
+      const prog = t.progress || 0;
       return `<div class="focus-item ${crit ? 'critical' : ''}">
-        <input type="checkbox" data-done="${t.id}" title="Mark done">
+        <input type="checkbox" data-done="${t.id}" title="Tick off today's slice (+${inc}%)">
         <div class="grow">
           <div class="t-name">${esc(t.name)} ${crit ? '<span class="pill critical">critical path</span>' : ''}</div>
-          <div class="t-sub"><span class="dot" style="background:${proj.color};display:inline-block;margin-right:5px"></span>${esc(proj.name)}${who ? ' · ' + esc(who) : ''}</div>
+          <div class="t-sub"><span class="dot" style="background:${proj.color};display:inline-block;margin-right:5px"></span>${esc(proj.name)}${who ? ' · ' + esc(who) : ''}${prog > 0 ? ` · ${prog}% done` : ''}</div>
         </div>
         ${countdownChip(t.end, t.done)}
       </div>`;
@@ -185,8 +188,12 @@
     `;
     filter.wire();
     view.querySelectorAll('[data-done]').forEach(cb =>
-      cb.addEventListener('change', () =>
-        mutate('PUT', `/api/tasks/${cb.dataset.done}`, { done: 1 })));
+      cb.addEventListener('change', () => {
+        const t = S.tasks.find(x => x.id === Number(cb.dataset.done));
+        const dur = D.diff(t.start, t.end) + 1;
+        const progress = Math.min(100, (t.progress || 0) + Math.ceil(100 / dur));
+        mutate('PUT', `/api/tasks/${t.id}`, { progress });
+      }));
   }
 
   // ----- Projects dashboard -----
@@ -198,7 +205,11 @@
       const cpm = cpmFor(p.id);
       const health = projectHealth(p, tasks, cpm);
       const doneCount = tasks.filter(t => t.done).length;
-      const pct = tasks.length ? Math.round(doneCount / tasks.length * 100) : 0;
+      // progress-weighted by task length, so a half-done long task counts fairly
+      const totalDays = tasks.reduce((a, t) => a + D.diff(t.start, t.end) + 1, 0);
+      const doneDays = tasks.reduce((a, t) =>
+        a + (D.diff(t.start, t.end) + 1) * (t.done ? 100 : (t.progress || 0)) / 100, 0);
+      const pct = totalDays ? Math.round(doneDays / totalDays * 100) : 0;
       const dueBit = p.due_date
         ? `Due ${D.human(p.due_date)} · ${Math.max(0, D.diff(D.today(), p.due_date))}d`
         : 'No due date';
@@ -466,6 +477,11 @@
       <label style="display:flex;align-items:center;gap:8px">
         <input type="checkbox" id="t_done" style="width:auto" ${t.done ? 'checked' : ''}> Done
       </label>
+      <div id="progRow">
+        <label>Progress <span id="t_progpct" style="font-weight:400">${t.done ? 100 : (t.progress || 0)}%</span></label>
+        <input type="range" id="t_progress" min="0" max="100" step="5"
+          value="${t.done ? 100 : (t.progress || 0)}" style="accent-color:var(--accent);padding:0">
+      </div>
       ${!isNew ? `
         <label>Depends on (must finish first)</label>
         <div id="depList">${myDeps.map(d => {
@@ -488,10 +504,25 @@
     // milestone keeps end = start
     const startI = panel.querySelector('#t_start'), endI = panel.querySelector('#t_end');
     const msI = panel.querySelector('#t_milestone');
-    function syncMilestone() { if (msI.checked) endI.value = startI.value; endI.disabled = msI.checked; }
+    const progI = panel.querySelector('#t_progress');
+    const progPct = panel.querySelector('#t_progpct');
+    const doneI = panel.querySelector('#t_done');
+    function syncMilestone() {
+      if (msI.checked) endI.value = startI.value;
+      endI.disabled = msI.checked;
+      panel.querySelector('#progRow').style.display = msI.checked ? 'none' : '';
+    }
     msI.addEventListener('change', syncMilestone);
     startI.addEventListener('change', () => { if (msI.checked) endI.value = startI.value; });
     syncMilestone();
+    progI.addEventListener('input', () => {
+      progPct.textContent = progI.value + '%';
+      doneI.checked = Number(progI.value) >= 100;
+    });
+    doneI.addEventListener('change', () => {
+      progI.value = doneI.checked ? 100 : (Number(progI.value) >= 100 ? 0 : progI.value);
+      progPct.textContent = progI.value + '%';
+    });
 
     panel.querySelector('#t_save').addEventListener('click', async () => {
       const name = panel.querySelector('#t_name').value.trim();
@@ -499,7 +530,8 @@
       let start = startI.value, end = msI.checked ? startI.value : endI.value;
       if (end < start) end = start;
       const body = { project_id: project.id, name, start, end,
-        done: panel.querySelector('#t_done').checked ? 1 : 0,
+        progress: msI.checked ? (doneI.checked ? 100 : 0) : Number(progI.value),
+        done: doneI.checked ? 1 : 0,
         milestone: msI.checked ? 1 : 0,
         person_id: Number(panel.querySelector('#t_person').value) || null,
         notes: panel.querySelector('#t_notes').value };

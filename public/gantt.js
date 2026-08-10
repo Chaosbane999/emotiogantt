@@ -234,10 +234,12 @@
 
       const g = el('g', { style: 'cursor:pointer' }, svg);
       const hasNote = !!(t.notes && t.notes.trim());
-      if (hasNote) {
-        el('title', {}, g).textContent =
-          '📝 ' + (t.notes.length > 220 ? t.notes.slice(0, 220) + '…' : t.notes);
-      }
+      const prog = t.done ? 100 : Math.max(0, Math.min(100, t.progress || 0));
+      const titleLines = [];
+      if (!t.done && prog > 0) titleLines.push(`${prog}% done`);
+      if (hasNote) titleLines.push(
+        '📝 ' + (t.notes.length > 220 ? t.notes.slice(0, 220) + '…' : t.notes));
+      if (titleLines.length) el('title', {}, g).textContent = titleLines.join('\n');
 
       if (t.milestone) {
         const cx = x(t.start) + dayW / 2, cy = y + BAR_H / 2, r = 9;
@@ -255,6 +257,11 @@
         const fill = t.done ? css('--ink-soft') : (c.critical ? css('--critical') : project.color);
         const barRect = el('rect', { x: bx, y, width: bw, height: BAR_H, rx: 6, fill,
           opacity: t.done ? .38 : .92, class: 'bar' }, g);
+        // darker fill showing how much of the task is complete
+        if (!t.done && prog > 0) {
+          el('rect', { x: bx, y, width: Math.max(6, bw * prog / 100), height: BAR_H,
+            rx: 6, fill: '#000', opacity: .28, style: 'pointer-events:none' }, g);
+        }
         let critRect = null;
         if (c.critical && !t.done) {
           critRect = el('rect', { x: bx, y, width: bw, height: BAR_H, rx: 6, fill: 'none',
@@ -476,8 +483,8 @@
         el('rect', { x: bx, y, width: bw, height: PB_H, rx: 6,
           fill: p.color, opacity: .3 }, g);
         const totalTaskDays = tasks.reduce((a, t) => a + D.diff(t.start, t.end) + 1, 0);
-        const doneTaskDays = tasks.filter(t => t.done)
-          .reduce((a, t) => a + D.diff(t.start, t.end) + 1, 0);
+        const doneTaskDays = tasks.reduce((a, t) =>
+          a + (D.diff(t.start, t.end) + 1) * (t.done ? 100 : (t.progress || 0)) / 100, 0);
         const frac = totalTaskDays ? doneTaskDays / totalTaskDays : 0;
         if (frac > 0) {
           el('rect', { x: bx, y, width: Math.max(bw * frac, 6), height: PB_H,

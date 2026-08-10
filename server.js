@@ -99,22 +99,30 @@ app.delete('/api/people/:id', (req, res) => {
 
 app.post('/api/tasks', (req, res) => {
   const t = req.body;
+  const progress = t.done ? 100 : Math.max(0, Math.min(100, Number(t.progress) || 0));
   const r = db.prepare(
-    `INSERT INTO tasks (project_id, name, start, end, done, milestone, person_id, notes, sort_order)
-     VALUES (?,?,?,?,?,?,?,?,
+    `INSERT INTO tasks (project_id, name, start, end, done, milestone, person_id, notes, progress, sort_order)
+     VALUES (?,?,?,?,?,?,?,?,?,
        COALESCE((SELECT MAX(sort_order)+1 FROM tasks WHERE project_id=?), 0))`
-  ).run(t.project_id, t.name, t.start, t.end, t.done ? 1 : 0, t.milestone ? 1 : 0,
-        t.person_id || null, t.notes || '', t.project_id);
+  ).run(t.project_id, t.name, t.start, t.end, progress >= 100 ? 1 : (t.done ? 1 : 0),
+        t.milestone ? 1 : 0, t.person_id || null, t.notes || '', progress, t.project_id);
   ok(res, { id: r.lastInsertRowid });
 });
 app.put('/api/tasks/:id', (req, res) => {
   const t = db.prepare('SELECT * FROM tasks WHERE id=?').get(req.params.id);
   if (!t) return res.status(404).json({ error: 'not found' });
   const m = { ...t, ...req.body };
+  // progress and done stay coupled: 100% = done, explicit progress wins
+  if (req.body.progress !== undefined) {
+    m.progress = Math.max(0, Math.min(100, Number(req.body.progress) || 0));
+    m.done = m.progress >= 100 ? 1 : 0;
+  } else if (req.body.done !== undefined) {
+    m.progress = req.body.done ? 100 : (t.progress >= 100 ? 0 : t.progress);
+  }
   db.prepare(
-    'UPDATE tasks SET name=?, start=?, end=?, done=?, milestone=?, person_id=?, notes=?, sort_order=? WHERE id=?'
+    'UPDATE tasks SET name=?, start=?, end=?, done=?, milestone=?, person_id=?, notes=?, progress=?, sort_order=? WHERE id=?'
   ).run(m.name, m.start, m.end, m.done ? 1 : 0, m.milestone ? 1 : 0,
-        m.person_id || null, m.notes, m.sort_order, t.id);
+        m.person_id || null, m.notes, m.progress || 0, m.sort_order, t.id);
   ok(res);
 });
 app.post('/api/tasks/reorder', (req, res) => {
