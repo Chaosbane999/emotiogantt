@@ -203,6 +203,18 @@ label { display: block; font-size: 13px; font-weight: 550; color: var(--ink-soft
 .gantt-add { padding: 10px 16px; }
 svg.gantt text { font-family: inherit; }
 
+/* filter chips */
+.chip-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: -8px 0 18px; }
+.chip {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 6px 13px; border: 1px solid var(--line); border-radius: 99px;
+  background: var(--surface); color: var(--ink-soft);
+  font-size: 13px; font-weight: 550; font-family: inherit; cursor: pointer;
+}
+.chip:hover { color: var(--ink); }
+.chip.on { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+.chip .tick { font-size: 11px; width: 10px; }
+
 /* portfolio (timeline view) */
 .pf-row {
   border-bottom: 1px solid var(--line); cursor: pointer;

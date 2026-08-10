@@ -371,12 +371,37 @@
   function renderTimeline() {
     setNav('timeline');
     const active = S.projects.filter(p => !p.archived);
+    // stored as EXCLUDED ids so newly added people default to shown
+    const excluded = new Set(JSON.parse(localStorage.getItem('cp_tl_excl') || '[]'));
+    const shown = S.people.filter(pp => !excluded.has(pp.id));
+
     view.innerHTML = `
       <h1>Timeline</h1>
       <p class="subtitle">All projects side by side, with a lane for each person's work.
         <span style="color:var(--critical);font-weight:600">Coral</span> = they're booked on two projects at once.
         Amber line = due date.</p>
+      ${S.people.length ? `<div class="chip-row">
+        <span class="muted" style="font-size:13px">Show:</span>
+        <button class="chip ${excluded.size === 0 ? 'on' : ''}" data-chip="all">Everyone</button>
+        ${S.people.map(pp => `
+          <button class="chip ${excluded.has(pp.id) ? '' : 'on'}" data-chip="${pp.id}">
+            <span class="dot" style="background:${pp.color}"></span>${esc(pp.name)}
+            <span class="tick">${excluded.has(pp.id) ? '' : '✓'}</span>
+          </button>`).join('')}
+      </div>` : ''}
       <div id="portfolioHost"></div>`;
+
+    view.querySelectorAll('[data-chip]').forEach(b => b.addEventListener('click', () => {
+      if (b.dataset.chip === 'all') {
+        localStorage.removeItem('cp_tl_excl');
+      } else {
+        const id = Number(b.dataset.chip);
+        if (excluded.has(id)) excluded.delete(id); else excluded.add(id);
+        localStorage.setItem('cp_tl_excl', JSON.stringify([...excluded]));
+      }
+      route();
+    }));
+
     if (!active.length) {
       document.getElementById('portfolioHost').innerHTML =
         '<div class="empty-state"><span class="big-emoji">🗺️</span>No projects yet.</div>';
@@ -386,7 +411,7 @@
     const healthByProject = new Map(active.map(p =>
       [p.id, projectHealth(p, projTasks(p.id), cpmFor(p.id))]));
     Gantt.renderPortfolio(document.getElementById('portfolioHost'), {
-      projects: active, tasksByProject, healthByProject, people: S.people,
+      projects: active, tasksByProject, healthByProject, people: shown,
       onOpen: (p) => { location.hash = `#/project/${p.id}`; },
     });
   }

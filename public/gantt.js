@@ -20,7 +20,7 @@
   function render(container, opts) {
     const { tasks, deps, cpm, project, people, zoom, baseline,
       onTaskClick, onTaskChange, onAddTask, onReorder } = opts;
-    const dayW = zoom === 'day' ? 36 : 13;
+    let dayW = zoom === 'day' ? 36 : 13;
     const today = D.today();
 
     // date range
@@ -33,6 +33,9 @@
     if (project.due_date && project.due_date > max) max = project.due_date;
     min = D.add(min, -3); max = D.add(max, 10);
     const totalDays = D.diff(min, max) + 1;
+    // stretch to fill the available width rather than leaving dead space
+    const avail = container.clientWidth - 231 - 2;
+    if (avail > 0 && totalDays * dayW < avail) dayW = avail / totalDays;
     const width = totalDays * dayW;
     const height = HEAD_H + tasks.length * ROW_H;
     const x = (date) => D.diff(min, date) * dayW;
@@ -230,6 +233,11 @@
       }
 
       const g = el('g', { style: 'cursor:pointer' }, svg);
+      const hasNote = !!(t.notes && t.notes.trim());
+      if (hasNote) {
+        el('title', {}, g).textContent =
+          '📝 ' + (t.notes.length > 220 ? t.notes.slice(0, 220) + '…' : t.notes);
+      }
 
       if (t.milestone) {
         const cx = x(t.start) + dayW / 2, cy = y + BAR_H / 2, r = 9;
@@ -239,7 +247,7 @@
           opacity: t.done ? .5 : 1,
         }, g);
         el('text', { x: cx + r + 6, y: cy + 4, 'font-size': 12, fill: css('--ink-soft') }, g)
-          .textContent = t.name;
+          .textContent = t.name + (hasNote ? ' ✎' : '');
         attachDrag(g, t, 'move', { g });
       } else {
         const bx = x(t.start), bw = (D.diff(t.start, t.end) + 1) * dayW;
@@ -254,7 +262,7 @@
         }
         const label = el('text', { 'font-size': 12, 'font-weight': 550,
           style: 'pointer-events:none' }, g);
-        label.textContent = t.name + (t.done ? ' ✓' : '');
+        label.textContent = t.name + (t.done ? ' ✓' : '') + (hasNote ? '  ✎' : '');
         if (bw > t.name.length * 7 + 16) {
           label.setAttribute('x', bx + 8); label.setAttribute('y', y + 16);
           label.setAttribute('fill', '#fff');
