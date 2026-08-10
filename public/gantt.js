@@ -18,7 +18,7 @@
   }
 
   function render(container, opts) {
-    const { tasks, deps, cpm, project, people, zoom,
+    const { tasks, deps, cpm, project, people, zoom, baseline,
       onTaskClick, onTaskChange, onAddTask, onReorder } = opts;
     const dayW = zoom === 'day' ? 36 : 13;
     const today = D.today();
@@ -26,6 +26,10 @@
     // date range
     let min = today, max = today;
     for (const t of tasks) { if (t.start < min) min = t.start; if (t.end > max) max = t.end; }
+    if (baseline) for (const b of baseline.values()) {
+      if (b.start < min) min = b.start;
+      if (b.end > max) max = b.end;
+    }
     if (project.due_date && project.due_date > max) max = project.due_date;
     min = D.add(min, -3); max = D.add(max, 10);
     const totalDays = D.diff(min, max) + 1;
@@ -207,6 +211,24 @@
     tasks.forEach((t, i) => {
       const c = cpm.get(t.id) || {};
       const y = HEAD_H + i * ROW_H + BAR_PAD;
+
+      // baseline ghost: where this task sat when the snapshot was taken
+      const b = baseline && baseline.get(t.id);
+      if (b) {
+        const gy = y + BAR_H + 1.5;
+        if (b.milestone) {
+          const cx = x(b.start) + dayW / 2, cy = y + BAR_H / 2, r = 9;
+          el('path', {
+            d: `M ${cx} ${cy - r} L ${cx + r} ${cy} L ${cx} ${cy + r} L ${cx - r} ${cy} Z`,
+            fill: 'none', stroke: css('--ink-soft'), 'stroke-width': 1.4,
+            'stroke-dasharray': '3 2', opacity: .8 }, svg);
+        } else {
+          el('rect', { x: x(b.start), y: gy,
+            width: (D.diff(b.start, b.end) + 1) * dayW, height: 5, rx: 2.5,
+            fill: css('--ink-soft'), opacity: .45 }, svg);
+        }
+      }
+
       const g = el('g', { style: 'cursor:pointer' }, svg);
 
       if (t.milestone) {
@@ -318,10 +340,140 @@
     if (tx > 0) scroll.scrollLeft = tx;
   }
 
+  // All projects on one timeline — see how they overlap
+  function renderPortfolio(container, opts) {
+    const { projects, tasksByProject, healthByProject, onOpen } = opts;
+    const dayW = 13;
+    const today = D.today();
+
+    let min = today, max = today;
+    for (const p of projects) {
+      for (const t of (tasksByProject.get(p.id) || [])) {
+        if (t.start < min) min = t.start;
+        if (t.end > max) max = t.end;
+      }
+      if (p.due_date && p.due_date > max) max = p.due_date;
+    }
+    min = D.add(min, -4); max = D.add(max, 14);
+    const totalDays = D.diff(min, max) + 1;
+    const width = totalDays * dayW;
+    const height = HEAD_H + projects.length * ROW_H;
+    const x = (date) => D.diff(min, date) * dayW;
+
+    container.innerHTML = '';
+    const wrap = document.createElement('div');
+    wrap.className = 'gantt-wrap';
+
+    const names = document.createElement('div');
+    names.className = 'gantt-names';
+    names.innerHTML = '<div class="gn-head">Projects</div>';
+    for (const p of projects) {
+      const row = document.createElement('div');
+      row.className = 'gn-row';
+      const health = healthByProject.get(p.id);
+      const hColor = health === 'late' ? 'var(--late)' : health === 'watch' ? 'var(--watch)' : 'var(--good)';
+      row.innerHTML =
+        `<span class="dot" style="background:${p.color}"></span>` +
+        `<span class="nm">${escapeHtml(p.name)}</span>` +
+        `<span class="dot" style="background:${hColor}" title="${health}"></span>`;
+      row.addEventListener('click', () => onOpen(p));
+      names.appendChild(row);
+    }
+    wrap.appendChild(names);
+
+    const scroll = document.createElement('div');
+    scroll.className = 'gantt-scroll';
+    const svg = el('svg', { class: 'gantt', width, height: height + 10,
+      style: 'display:block' });
+    scroll.appendChild(svg);
+    wrap.appendChild(scroll);
+
+    for (let r = 0; r <= projects.length; r++) {
+      el('line', { x1: 0, y1: HEAD_H + r * ROW_H, x2: width, y2: HEAD_H + r * ROW_H,
+        stroke: css('--line'), 'stroke-width': 1 }, svg);
+    }
+
+    // month header + week ticks
+    let cursor = min;
+    while (cursor <= max) {
+      const dt = new Date(cursor + 'T00:00:00Z');
+      const monthEnd = D.fmt(Date.UTC(dt.getUTCFullYear(), dt.getUTCMonth() + 1, 0));
+      const segEnd = monthEnd < max ? monthEnd : max;
+      const mx = x(cursor), mw = (D.diff(cursor, segEnd) + 1) * dayW;
+      if (mw > 46) {
+        el('text', { x: mx + 8, y: 22, 'font-size': 12, 'font-weight': 600,
+          fill: css('--ink-soft') }, svg).textContent =
+          dt.toLocaleDateString(undefined, { month: 'long', year: 'numeric', timeZone: 'UTC' });
+      }
+      el('line', { x1: mx, y1: 0, x2: mx, y2: height, stroke: css('--line') }, svg);
+      cursor = D.add(segEnd, 1);
+    }
+    for (let i = 0; i < totalDays; i++) {
+      const dt = new Date(D.add(min, i) + 'T00:00:00Z');
+      if (dt.getUTCDay() === 1) {
+        el('text', { x: i * dayW + 3, y: 46, 'font-size': 10,
+          fill: css('--ink-soft') }, svg).textContent = dt.getUTCDate();
+      }
+    }
+
+    // today line
+    if (today >= min && today <= max) {
+      const tx = x(today) + dayW / 2;
+      el('line', { x1: tx, y1: HEAD_H - 6, x2: tx, y2: height,
+        stroke: css('--accent'), 'stroke-width': 1.6, 'stroke-dasharray': '4 3' }, svg);
+      el('rect', { x: tx - 22, y: HEAD_H - 26, width: 44, height: 17, rx: 8,
+        fill: css('--accent') }, svg);
+      el('text', { x: tx, y: HEAD_H - 14, 'font-size': 10, 'font-weight': 700,
+        'text-anchor': 'middle', fill: '#fff' }, svg).textContent = 'Today';
+    }
+
+    projects.forEach((p, i) => {
+      const tasks = tasksByProject.get(p.id) || [];
+      const y = HEAD_H + i * ROW_H + BAR_PAD;
+      if (tasks.length) {
+        const s = tasks.reduce((a, t) => t.start < a ? t.start : a, tasks[0].start);
+        const e = tasks.reduce((a, t) => t.end > a ? t.end : a, tasks[0].end);
+        const bx = x(s), bw = (D.diff(s, e) + 1) * dayW;
+        const g = el('g', { style: 'cursor:pointer' }, svg);
+        // full span, soft
+        el('rect', { x: bx, y, width: bw, height: BAR_H, rx: 6,
+          fill: p.color, opacity: .3 }, g);
+        // progress: fraction of task-days completed
+        const totalTaskDays = tasks.reduce((a, t) => a + D.diff(t.start, t.end) + 1, 0);
+        const doneTaskDays = tasks.filter(t => t.done)
+          .reduce((a, t) => a + D.diff(t.start, t.end) + 1, 0);
+        const frac = totalTaskDays ? doneTaskDays / totalTaskDays : 0;
+        if (frac > 0) {
+          el('rect', { x: bx, y, width: Math.max(bw * frac, 6), height: BAR_H,
+            rx: 6, fill: p.color, opacity: .9 }, g);
+        }
+        // milestones as small diamonds on the span
+        for (const t of tasks.filter(t => t.milestone)) {
+          const cx = x(t.start) + dayW / 2, cy = y + BAR_H / 2, r = 6;
+          el('path', {
+            d: `M ${cx} ${cy - r} L ${cx + r} ${cy} L ${cx} ${cy + r} L ${cx - r} ${cy} Z`,
+            fill: t.done ? css('--ink-soft') : p.color, stroke: css('--surface'),
+            'stroke-width': 1.5 }, g);
+        }
+        g.addEventListener('click', () => onOpen(p));
+      }
+      // due marker
+      if (p.due_date) {
+        const dx = x(p.due_date) + dayW;
+        el('line', { x1: dx, y1: y - 2, x2: dx, y2: y + BAR_H + 2,
+          stroke: css('--watch'), 'stroke-width': 2 }, svg);
+      }
+    });
+
+    container.appendChild(wrap);
+    const tx = x(today) - dayW * 10;
+    if (tx > 0) scroll.scrollLeft = tx;
+  }
+
   function escapeHtml(s) {
     return String(s).replace(/[&<>"']/g, c =>
       ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   }
 
-  window.Gantt = { render };
+  window.Gantt = { render, renderPortfolio };
 })();

@@ -5,8 +5,9 @@
   const panel = document.getElementById('panel');
   const scrim = document.getElementById('scrim');
 
-  let S = { projects: [], people: [], tasks: [], deps: [] };
+  let S = { projects: [], people: [], tasks: [], deps: [], snapshots: [] };
   let ganttZoom = localStorage.getItem('cp_zoom') || 'day';
+  const snapCache = new Map(); // snapshot id -> task list
 
   const PROJECT_COLORS = ['#24bbb6', '#6b7fd7', '#6faa8d', '#d9a648', '#c77fb3', '#a08b6f'];
   const PEOPLE_COLORS = ['#24bbb6', '#8a94a6', '#6b7fd7', '#6faa8d', '#c77fb3', '#d9a648'];
@@ -204,14 +205,37 @@
   }
 
   // ----- Project detail (Gantt) -----
-  function renderProject(pid) {
+  async function renderProject(pid) {
     setNav('projects');
     const p = projById(pid);
     if (!p) { location.hash = '#/projects'; return; }
-    const tasks = projTasks(pid);
+    const allTasks = projTasks(pid);
     const deps = projDeps(pid);
     const cpm = cpmFor(pid);
-    const health = projectHealth(p, tasks, cpm);
+    const health = projectHealth(p, allTasks, cpm);
+    const mySnaps = S.snapshots.filter(s => s.project_id === pid);
+
+    // person filter
+    const pfKey = `cp_pfilter_${pid}`;
+    const personFilter = Number(localStorage.getItem(pfKey)) || 0;
+    const tasks = personFilter
+      ? allTasks.filter(t => t.person_id === personFilter) : allTasks;
+
+    // baseline snapshot to compare against
+    const snapKey = `cp_snap_${pid}`;
+    let snapId = Number(localStorage.getItem(snapKey)) || 0;
+    if (snapId && !mySnaps.some(s => s.id === snapId)) {
+      snapId = 0; localStorage.removeItem(snapKey);
+    }
+    let baseline = null, snapName = '';
+    if (snapId) {
+      if (!snapCache.has(snapId)) {
+        const snap = await api('GET', `/api/snapshots/${snapId}`);
+        snapCache.set(snapId, snap.data);
+      }
+      baseline = new Map(snapCache.get(snapId).map(t => [t.id, t]));
+      snapName = (mySnaps.find(s => s.id === snapId) || {}).name || 'snapshot';
+    }
 
     view.innerHTML = `
       <div class="gantt-toolbar">
@@ -221,6 +245,17 @@
         </h1>
         <span class="pill ${health}">${HEALTH_LABEL[health]}</span>
         <div class="spacer"></div>
+        <select id="pFilter" class="toolbar-select" title="Show one person's tasks">
+          <option value="0">Everyone</option>
+          ${S.people.map(pp =>
+            `<option value="${pp.id}" ${pp.id === personFilter ? 'selected' : ''}>Just ${esc(pp.name)}</option>`).join('')}
+        </select>
+        <select id="snapSel" class="toolbar-select" title="Compare against a saved plan">
+          <option value="0">No comparison</option>
+          ${mySnaps.map(s =>
+            `<option value="${s.id}" ${s.id === snapId ? 'selected' : ''}>vs ${esc(s.name)}</option>`).join('')}
+        </select>
+        <button class="btn small" id="saveSnap" title="Save today's plan so you can compare later">📸 Snapshot</button>
         <div class="zoom-toggle">
           <button data-z="day" class="${ganttZoom === 'day' ? 'active' : ''}">Day</button>
           <button data-z="week" class="${ganttZoom === 'week' ? 'active' : ''}">Week</button>
@@ -230,28 +265,73 @@
       <div id="ganttHost"></div>
       <p class="muted" style="font-size:13px;margin-top:14px">
         <span style="color:var(--critical)">■</span> Critical path — a delay here delays the whole project.
-        Drag bars to reschedule; drag edges to change length; click a task to edit.
+        ${baseline ? `<span style="color:var(--ink-soft)">▬</span> Grey line under a bar = where it sat in "${esc(snapName)}".` : ''}
+        ${personFilter ? `Showing only ${esc(personName(personFilter) || '')}'s tasks.` : ''}
+        Drag bars to reschedule; drag edges to change length; drag the list to reorder; click a task to edit.
       </p>`;
 
     view.querySelectorAll('[data-z]').forEach(b => b.addEventListener('click', () => {
       ganttZoom = b.dataset.z; localStorage.setItem('cp_zoom', ganttZoom); route();
     }));
     view.querySelector('#editProj').addEventListener('click', () => editProject(p));
+    view.querySelector('#pFilter').addEventListener('change', (e) => {
+      const v = Number(e.target.value);
+      if (v) localStorage.setItem(pfKey, v); else localStorage.removeItem(pfKey);
+      route();
+    });
+    view.querySelector('#snapSel').addEventListener('change', (e) => {
+      const v = Number(e.target.value);
+      if (v) localStorage.setItem(snapKey, v); else localStorage.removeItem(snapKey);
+      route();
+    });
+    view.querySelector('#saveSnap').addEventListener('click', async () => {
+      const name = prompt('Name this snapshot:',
+        `Plan ${D.human(D.today())}`);
+      if (name === null) return;
+      await mutate('POST', '/api/snapshots', { project_id: pid, name: name || 'Snapshot' });
+    });
 
-    if (!tasks.length) {
+    if (!allTasks.length) {
       document.getElementById('ganttHost').innerHTML =
         `<div class="empty-state"><span class="big-emoji">🌱</span>No tasks yet. Add the first one to see your timeline.<br><br>
          <button class="btn primary" id="firstTask">+ Add first task</button></div>`;
       document.getElementById('firstTask').addEventListener('click', () => editTask(null, p));
       return;
     }
+    if (!tasks.length) {
+      document.getElementById('ganttHost').innerHTML =
+        `<div class="empty-state"><span class="big-emoji">🔍</span>${esc(personName(personFilter) || 'They')} has no tasks in this project.</div>`;
+      return;
+    }
 
     Gantt.render(document.getElementById('ganttHost'), {
-      tasks, deps, cpm, project: p, people: S.people, zoom: ganttZoom,
+      tasks, deps, cpm, project: p, people: S.people, zoom: ganttZoom, baseline,
       onTaskClick: (t) => editTask(t, p),
       onTaskChange: (t, dates) => mutate('PUT', `/api/tasks/${t.id}`, dates),
       onAddTask: () => editTask(null, p),
       onReorder: (ids) => mutate('POST', '/api/tasks/reorder', { ids }),
+    });
+  }
+
+  // ----- Timeline (all projects overlapping) -----
+  function renderTimeline() {
+    setNav('timeline');
+    const active = S.projects.filter(p => !p.archived);
+    view.innerHTML = `
+      <h1>Timeline</h1>
+      <p class="subtitle">All projects side by side — solid colour is work done, soft colour is the road ahead. Amber line = due date.</p>
+      <div id="portfolioHost"></div>`;
+    if (!active.length) {
+      document.getElementById('portfolioHost').innerHTML =
+        '<div class="empty-state"><span class="big-emoji">🗺️</span>No projects yet.</div>';
+      return;
+    }
+    const tasksByProject = new Map(active.map(p => [p.id, projTasks(p.id)]));
+    const healthByProject = new Map(active.map(p =>
+      [p.id, projectHealth(p, projTasks(p.id), cpmFor(p.id))]));
+    Gantt.renderPortfolio(document.getElementById('portfolioHost'), {
+      projects: active, tasksByProject, healthByProject,
+      onOpen: (p) => { location.hash = `#/project/${p.id}`; },
     });
   }
 
@@ -427,6 +507,7 @@
     const m = h.match(/^#\/project\/(\d+)/);
     if (m) return renderProject(Number(m[1]));
     if (h.startsWith('#/projects')) return renderProjects();
+    if (h.startsWith('#/timeline')) return renderTimeline();
     if (h.startsWith('#/people')) return renderPeople();
     return renderToday();
   }

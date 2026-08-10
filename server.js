@@ -53,6 +53,8 @@ function fullState() {
     people: db.prepare('SELECT * FROM people ORDER BY name').all(),
     tasks: db.prepare('SELECT * FROM tasks ORDER BY project_id, sort_order, start, id').all(),
     deps: db.prepare('SELECT * FROM deps').all(),
+    snapshots: db.prepare(
+      'SELECT id, project_id, name, created_at FROM snapshots ORDER BY id DESC').all(),
   };
 }
 
@@ -123,6 +125,24 @@ app.post('/api/tasks/reorder', (req, res) => {
 });
 app.delete('/api/tasks/:id', (req, res) => {
   db.prepare('DELETE FROM tasks WHERE id=?').run(req.params.id);
+  ok(res);
+});
+
+app.post('/api/snapshots', (req, res) => {
+  const { project_id, name } = req.body;
+  const tasks = db.prepare(
+    'SELECT id, name, start, end, milestone, done FROM tasks WHERE project_id=?').all(project_id);
+  const r = db.prepare('INSERT INTO snapshots (project_id, name, data) VALUES (?,?,?)')
+    .run(project_id, name || 'Snapshot', JSON.stringify(tasks));
+  ok(res, { id: r.lastInsertRowid });
+});
+app.get('/api/snapshots/:id', (req, res) => {
+  const s = db.prepare('SELECT * FROM snapshots WHERE id=?').get(req.params.id);
+  if (!s) return res.status(404).json({ error: 'not found' });
+  ok(res, { ...s, data: JSON.parse(s.data) });
+});
+app.delete('/api/snapshots/:id', (req, res) => {
+  db.prepare('DELETE FROM snapshots WHERE id=?').run(req.params.id);
   ok(res);
 });
 
