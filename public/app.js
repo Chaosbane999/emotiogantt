@@ -292,11 +292,9 @@
     const health = projectHealth(p, allTasks, cpm);
     const mySnaps = S.snapshots.filter(s => s.project_id === pid);
 
-    // person filter
-    const pfKey = `cp_pfilter_${pid}`;
-    const personFilter = Number(localStorage.getItem(pfKey)) || 0;
-    const tasks = personFilter
-      ? allTasks.filter(t => t.person_id === personFilter) : allTasks;
+    // person filter (checkbox chips — show one or many)
+    const filter = chipFilter(`cp_pfchips_${pid}`, { includeUnassigned: true });
+    const tasks = allTasks.filter(filter.showsTask);
 
     // baseline snapshot to compare against
     const snapKey = `cp_snap_${pid}`;
@@ -322,11 +320,6 @@
         </h1>
         <span class="pill ${health}">${HEALTH_LABEL[health]}</span>
         <div class="spacer"></div>
-        <select id="pFilter" class="toolbar-select" title="Show one person's tasks">
-          <option value="0">Everyone</option>
-          ${S.people.map(pp =>
-            `<option value="${pp.id}" ${pp.id === personFilter ? 'selected' : ''}>Just ${esc(pp.name)}</option>`).join('')}
-        </select>
         <select id="snapSel" class="toolbar-select" title="Compare against a saved plan">
           <option value="0">No comparison</option>
           ${mySnaps.map(s =>
@@ -339,23 +332,20 @@
         </div>
         <button class="btn small" id="editProj">Settings</button>
       </div>
+      ${filter.html}
       <div id="ganttHost"></div>
       <p class="muted" style="font-size:13px;margin-top:14px">
         <span style="color:var(--critical)">■</span> Critical path — a delay here delays the whole project.
         ${baseline ? `<span style="color:var(--ink-soft)">▬</span> Grey line under a bar = where it sat in "${esc(snapName)}".` : ''}
-        ${personFilter ? `Showing only ${esc(personName(personFilter) || '')}'s tasks.` : ''}
+        ${filter.excluded.size ? 'Showing only the ticked people’s tasks. ' : ''}
         Drag bars to reschedule; drag edges to change length; drag the list to reorder; click a task to edit.
       </p>`;
+    filter.wire();
 
     view.querySelectorAll('[data-z]').forEach(b => b.addEventListener('click', () => {
       ganttZoom = b.dataset.z; localStorage.setItem('cp_zoom', ganttZoom); route();
     }));
     view.querySelector('#editProj').addEventListener('click', () => editProject(p));
-    view.querySelector('#pFilter').addEventListener('change', (e) => {
-      const v = Number(e.target.value);
-      if (v) localStorage.setItem(pfKey, v); else localStorage.removeItem(pfKey);
-      route();
-    });
     view.querySelector('#snapSel').addEventListener('change', (e) => {
       const v = Number(e.target.value);
       if (v) localStorage.setItem(snapKey, v); else localStorage.removeItem(snapKey);
@@ -372,7 +362,7 @@
     }
     if (!tasks.length) {
       document.getElementById('ganttHost').innerHTML =
-        `<div class="empty-state"><span class="big-emoji">🔍</span>${esc(personName(personFilter) || 'They')} has no tasks in this project.</div>`;
+        `<div class="empty-state"><span class="big-emoji">🔍</span>Nobody ticked has tasks in this project.</div>`;
       return;
     }
 

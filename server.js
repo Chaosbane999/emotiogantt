@@ -6,10 +6,14 @@ const db = require('./db');
 const app = express();
 const PORT = process.env.PORT || 3000;
 const PASSCODE = process.env.APP_PASSCODE || '';
+// optional: comma-separated IPs that skip the passcode entirely (e.g. office/VPN)
+const ALLOWED_IPS = (process.env.ALLOWED_IPS || '')
+  .split(',').map(s => s.trim()).filter(Boolean);
 
+app.set('trust proxy', true); // behind Traefik, req.ip = real client IP
 app.use(express.json());
 
-// ---- optional passcode gate (set APP_PASSCODE in production) ----
+// ---- passcode gate: one shared passcode, remembered per device for a year ----
 const authToken = PASSCODE
   ? crypto.createHash('sha256').update(PASSCODE).digest('hex')
   : null;
@@ -23,18 +27,32 @@ function readCookie(req, name) {
   return null;
 }
 
+const clientIp = (req) => (req.ip || '').replace(/^::ffff:/, '');
+const ipAllowed = (req) => ALLOWED_IPS.includes(clientIp(req));
+
+// gentle brute-force damper: after 5 bad tries from an IP, each try waits longer
+const loginFails = new Map();
 app.post('/login', (req, res) => {
   if (!authToken) return res.json({ ok: true });
-  if ((req.body.passcode || '') === PASSCODE) {
-    res.setHeader('Set-Cookie',
-      `cp_auth=${authToken}; Path=/; HttpOnly; SameSite=Lax; Max-Age=31536000`);
-    return res.json({ ok: true });
-  }
-  res.status(401).json({ ok: false });
+  const ip = clientIp(req);
+  const fails = loginFails.get(ip) || 0;
+  const finish = () => {
+    if ((req.body.passcode || '') === PASSCODE) {
+      loginFails.delete(ip);
+      const secure = req.secure ? ' Secure;' : '';
+      res.setHeader('Set-Cookie',
+        `cp_auth=${authToken}; Path=/; HttpOnly; SameSite=Lax;${secure} Max-Age=31536000`);
+      return res.json({ ok: true });
+    }
+    loginFails.set(ip, fails + 1);
+    res.status(401).json({ ok: false });
+  };
+  setTimeout(finish, Math.min(5000, Math.max(0, fails - 4) * 1000));
 });
 
 app.use((req, res, next) => {
   if (!authToken) return next();
+  if (ipAllowed(req)) return next();
   if (readCookie(req, 'cp_auth') === authToken) return next();
   if (req.path === '/login.html' || req.path === '/style.css') return next();
   if (req.path.startsWith('/api/')) return res.status(401).json({ error: 'unauthorized' });
