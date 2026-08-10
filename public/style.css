@@ -248,6 +248,17 @@ svg.gantt text { font-family: inherit; }
 .swatch { width: 26px; height: 26px; border-radius: 50%; cursor: pointer; border: 2px solid transparent; }
 .swatch.sel { border-color: var(--ink); }
 
+/* toast */
+.toast {
+  position: fixed; left: 50%; bottom: 28px;
+  transform: translateX(-50%) translateY(12px);
+  background: var(--ink); color: var(--bg);
+  padding: 11px 20px; border-radius: 11px; font-size: 14px; font-weight: 500;
+  opacity: 0; transition: opacity .25s ease, transform .25s ease;
+  z-index: 60; pointer-events: none; box-shadow: var(--shadow); max-width: 90vw;
+}
+.toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
 /* login */
 .login-wrap { display: flex; align-items: center; justify-content: center; min-height: 100vh; }
 .login-card {

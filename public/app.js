@@ -62,6 +62,32 @@
   scrim.addEventListener('click', closePanel);
   document.addEventListener('keydown', e => { if (e.key === 'Escape') closePanel(); });
 
+  // small confirmation toast (popups like prompt/confirm are blocked in some browsers)
+  function toast(msg) {
+    let t = document.getElementById('toast');
+    if (!t) {
+      t = document.createElement('div');
+      t.id = 'toast'; t.className = 'toast';
+      t.setAttribute('role', 'status');
+      document.body.appendChild(t);
+    }
+    t.textContent = msg;
+    t.classList.add('show');
+    clearTimeout(toast._t);
+    toast._t = setTimeout(() => t.classList.remove('show'), 3500);
+  }
+
+  // gentle two-step delete: first click arms the button, second click confirms
+  function armDelete(btn, fn) {
+    btn.addEventListener('click', () => {
+      if (btn.dataset.armed) { fn(); return; }
+      btn.dataset.armed = '1';
+      const orig = btn.textContent;
+      btn.textContent = 'Click again to confirm';
+      setTimeout(() => { delete btn.dataset.armed; btn.textContent = orig; }, 3000);
+    });
+  }
+
   // ---------- views ----------
   function setNav(name) {
     document.querySelectorAll('[data-nav]').forEach(a =>
@@ -196,11 +222,11 @@
       if (isNew) await mutate('POST', '/api/projects', body);
       else await mutate('PUT', `/api/projects/${p.id}`, body);
     });
-    if (!isNew) panel.querySelector('#f_del').addEventListener('click', async () => {
-      if (!confirm(`Delete "${p.name}" and all its tasks?`)) return;
+    if (!isNew) armDelete(panel.querySelector('#f_del'), async () => {
       closePanel();
       location.hash = '#/projects';
       await mutate('DELETE', `/api/projects/${p.id}`);
+      toast(`Project "${p.name}" deleted.`);
     });
   }
 
@@ -284,12 +310,7 @@
       if (v) localStorage.setItem(snapKey, v); else localStorage.removeItem(snapKey);
       route();
     });
-    view.querySelector('#saveSnap').addEventListener('click', async () => {
-      const name = prompt('Name this snapshot:',
-        `Plan ${D.human(D.today())}`);
-      if (name === null) return;
-      await mutate('POST', '/api/snapshots', { project_id: pid, name: name || 'Snapshot' });
-    });
+    view.querySelector('#saveSnap').addEventListener('click', () => snapshotDialog(p));
 
     if (!allTasks.length) {
       document.getElementById('ganttHost').innerHTML =
@@ -311,6 +332,39 @@
       onAddTask: () => editTask(null, p),
       onReorder: (ids) => mutate('POST', '/api/tasks/reorder', { ids }),
     });
+  }
+
+  function snapshotDialog(p) {
+    const mySnaps = S.snapshots.filter(s => s.project_id === p.id);
+    openPanel(`
+      <h3>Save a snapshot</h3>
+      <p class="muted" style="font-size:13px;margin:6px 0 0">
+        A snapshot freezes today's plan. Later, pick it in the "vs" menu to see
+        how far things have drifted from it.</p>
+      <label>Name</label><input id="s_name" value="Plan ${D.human(D.today())}">
+      <div class="panel-actions">
+        <button class="btn primary grow" id="s_save">Save snapshot</button>
+        <button class="btn" id="s_cancel">Cancel</button>
+      </div>
+      ${mySnaps.length ? `
+        <h3 style="margin-top:30px;font-size:15px">Saved snapshots</h3>
+        ${mySnaps.map(s => `<div class="dep-row">
+          <span class="grow">${esc(s.name)} · ${D.human(s.created_at)}</span>
+          <button data-delsnap="${s.id}" title="Delete snapshot">✕</button>
+        </div>`).join('')}` : ''}`);
+    panel.querySelector('#s_cancel').addEventListener('click', closePanel);
+    panel.querySelector('#s_save').addEventListener('click', async () => {
+      const name = panel.querySelector('#s_name').value.trim() || 'Snapshot';
+      closePanel();
+      await mutate('POST', '/api/snapshots', { project_id: p.id, name });
+      toast(`Snapshot "${name}" saved — pick it in the "vs" menu to compare later.`);
+    });
+    panel.querySelectorAll('[data-delsnap]').forEach(b =>
+      b.addEventListener('click', async () => {
+        closePanel();
+        await mutate('DELETE', `/api/snapshots/${b.dataset.delsnap}`);
+        toast('Snapshot deleted.');
+      }));
   }
 
   // ----- Timeline (all projects overlapping) -----
@@ -406,10 +460,10 @@
       else await mutate('PUT', `/api/tasks/${t.id}`, body);
     });
     if (!isNew) {
-      panel.querySelector('#t_del').addEventListener('click', async () => {
-        if (!confirm(`Delete "${t.name}"?`)) return;
+      armDelete(panel.querySelector('#t_del'), async () => {
         closePanel();
         await mutate('DELETE', `/api/tasks/${t.id}`);
+        toast(`Task "${t.name}" deleted.`);
       });
       panel.querySelectorAll('[data-deldep]').forEach(b => b.addEventListener('click', async () => {
         closePanel();
@@ -494,10 +548,10 @@
       if (isNew) await mutate('POST', '/api/people', { name, color });
       else await mutate('PUT', `/api/people/${p.id}`, { name, color });
     });
-    if (!isNew) panel.querySelector('#p_del').addEventListener('click', async () => {
-      if (!confirm(`Remove ${p.name}? Their tasks stay, just unassigned.`)) return;
+    if (!isNew) armDelete(panel.querySelector('#p_del'), async () => {
       closePanel();
       await mutate('DELETE', `/api/people/${p.id}`);
+      toast(`${p.name} removed — their tasks are now unassigned.`);
     });
   }
 
