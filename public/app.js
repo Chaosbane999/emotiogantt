@@ -531,20 +531,44 @@
   }
 
   // ----- Timeline (all projects overlapping) -----
+  let tlWeekOff = 0;
   function renderTimeline() {
     setNav('timeline');
     const active = S.projects.filter(p => !p.archived);
     const filter = chipFilter('cp_tl_excl');
     const shown = filter.shown;
+    const tlZoom = localStorage.getItem('cp_tl_zoom') || 'all';
+    const weekStart = D.add(sundayOf(D.today()), tlWeekOff * 7);
 
     view.innerHTML = `
       <h1>Timeline</h1>
       <p class="subtitle">All projects side by side, with a lane for each person's work.
         <span style="color:var(--critical);font-weight:600">Coral</span> = they're booked on two projects at once.
         Amber line = due date.</p>
-      ${filter.html}
+      <div class="gantt-toolbar">
+        ${filter.html}
+        <div class="spacer"></div>
+        ${tlZoom === 'week' ? `
+          <div class="zoom-toggle">
+            <button data-twk="-1" title="Previous week">‹</button>
+            <button data-twk="0" title="Jump to this week">${D.human(weekStart)} – ${D.human(D.add(weekStart, 6))}</button>
+            <button data-twk="1" title="Next week">›</button>
+          </div>` : ''}
+        <div class="zoom-toggle">
+          <button data-tz="all" class="${tlZoom === 'all' ? 'active' : ''}">All</button>
+          <button data-tz="week" class="${tlZoom === 'week' ? 'active' : ''}">Week</button>
+        </div>
+      </div>
       <div id="portfolioHost"></div>`;
     filter.wire();
+    view.querySelectorAll('[data-tz]').forEach(b => b.addEventListener('click', () => {
+      localStorage.setItem('cp_tl_zoom', b.dataset.tz); route();
+    }));
+    view.querySelectorAll('[data-twk]').forEach(b => b.addEventListener('click', () => {
+      const d = Number(b.dataset.twk);
+      tlWeekOff = d === 0 ? 0 : tlWeekOff + d;
+      route();
+    }));
 
     if (!active.length) {
       document.getElementById('portfolioHost').innerHTML =
@@ -556,6 +580,7 @@
       [p.id, projectHealth(p, projLeafTasks(p.id), cpmFor(p.id))]));
     Gantt.renderPortfolio(document.getElementById('portfolioHost'), {
       projects: active, tasksByProject, healthByProject, people: shown,
+      weekStart: tlZoom === 'week' ? weekStart : null,
       onOpen: (p) => { location.hash = `#/project/${p.id}`; },
     });
   }

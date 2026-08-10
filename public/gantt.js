@@ -4,6 +4,10 @@
   const NS = 'http://www.w3.org/2000/svg';
   const ROW_H = 40, HEAD_H = 56, BAR_H = 24, BAR_PAD = (ROW_H - BAR_H) / 2;
 
+  // remember horizontal scroll per chart+zoom so re-renders (theme toggle,
+  // edits, filters) don't jump the view back to today
+  const scrollMemory = {};
+
   function el(tag, attrs, parent) {
     const e = document.createElementNS(NS, tag);
     for (const k in attrs) e.setAttribute(k, attrs[k]);
@@ -415,16 +419,23 @@
     }
 
     container.appendChild(wrap);
-    // scroll so today is visible near the left
-    const tx = x(today) - dayW * 4;
-    if (tx > 0) scroll.scrollLeft = tx;
+    const memKey = `g:${project.id}:${zoom}`;
+    if (memKey in scrollMemory) {
+      scroll.scrollLeft = scrollMemory[memKey];
+    } else {
+      // first open: scroll so today is visible near the left
+      const tx = x(today) - dayW * 4;
+      if (tx > 0) scroll.scrollLeft = tx;
+    }
+    scroll.addEventListener('scroll', () => { scrollMemory[memKey] = scroll.scrollLeft; });
   }
 
   // All projects on one timeline — see how they overlap, with a lane per person
   // so double-bookings across projects show up in coral.
   function renderPortfolio(container, opts) {
-    const { projects, tasksByProject, healthByProject, people, onOpen } = opts;
-    const dayW = 14;
+    const { projects, tasksByProject, healthByProject, people, onOpen, weekStart } = opts;
+    const weekMode = !!weekStart;
+    let dayW = 14;
     const PB_H = 22;          // project span bar height
     const NAME_BAND = 40;     // vertical space for the project bar band
     const LANE_H = 18;        // vertical space per person lane
@@ -441,16 +452,23 @@
       return { p, tasks, involved, rowH: NAME_BAND + involved.length * LANE_H + 12 };
     });
 
-    let min = today, max = today;
-    for (const r of rows) {
-      for (const t of r.tasks) {
-        if (t.start < min) min = t.start;
-        if (t.end > max) max = t.end;
+    let min, max;
+    if (weekMode) {
+      min = weekStart; max = D.add(min, 6);
+    } else {
+      min = today; max = today;
+      for (const r of rows) {
+        for (const t of r.tasks) {
+          if (t.start < min) min = t.start;
+          if (t.end > max) max = t.end;
+        }
+        if (r.p.due_date && r.p.due_date > max) max = r.p.due_date;
       }
-      if (r.p.due_date && r.p.due_date > max) max = r.p.due_date;
+      min = D.add(min, -4); max = D.add(max, 14);
     }
-    min = D.add(min, -4); max = D.add(max, 14);
     const totalDays = D.diff(min, max) + 1;
+    const avail = container.clientWidth - 231 - 2;
+    if (avail > 0 && totalDays * dayW < avail) dayW = avail / totalDays;
     const width = totalDays * dayW;
     const height = HEAD_H + rows.reduce((a, r) => a + r.rowH, 0);
     const x = (date) => D.diff(min, date) * dayW;
@@ -518,7 +536,13 @@
     }
     for (let i = 0; i < totalDays; i++) {
       const dt = new Date(D.add(min, i) + 'T00:00:00Z');
-      if (dt.getUTCDay() === 1) {
+      if (weekMode) {
+        el('text', { x: i * dayW + dayW / 2, y: 46, 'font-size': 11.5,
+          'text-anchor': 'middle', fill: css('--ink-soft') }, svg).textContent =
+          dt.toLocaleDateString(undefined, { weekday: 'short', timeZone: 'UTC' }) + ' ' + dt.getUTCDate();
+        el('line', { x1: i * dayW, y1: HEAD_H - 8, x2: i * dayW, y2: height,
+          stroke: css('--line'), opacity: .6 }, svg);
+      } else if (dt.getUTCDay() === 1) {
         el('text', { x: i * dayW + 3, y: 46, 'font-size': 10,
           fill: css('--ink-soft') }, svg).textContent = dt.getUTCDate();
       }
@@ -540,9 +564,17 @@
     for (const r of rows) {
       const { p, tasks, involved } = r;
       const y = r.top + (NAME_BAND - PB_H) / 2 + 4;
-      if (tasks.length) {
-        const s = tasks.reduce((a, t) => t.start < a ? t.start : a, tasks[0].start);
-        const e = tasks.reduce((a, t) => t.end > a ? t.end : a, tasks[0].end);
+      const span = tasks.length ? {
+        start: tasks.reduce((a, t) => t.start < a ? t.start : a, tasks[0].start),
+        end: tasks.reduce((a, t) => t.end > a ? t.end : a, tasks[0].end),
+      } : null;
+      if (span && weekMode && (span.start > max || span.end < min)) {
+        const future = span.start > max;
+        el('text', { x: future ? width - 22 : 8, y: y + 15, 'font-size': 12,
+          fill: css('--ink-soft'), opacity: .55 }, svg).textContent = future ? '⋯ ›' : '‹ ⋯';
+      } else if (span) {
+        const s = span.start < min ? min : span.start;
+        const e = span.end > max ? max : span.end;
         const bx = x(s), bw = (D.diff(s, e) + 1) * dayW;
         const g = el('g', { style: 'cursor:pointer' }, svg);
         el('rect', { x: bx, y, width: bw, height: PB_H, rx: 6,
@@ -600,8 +632,14 @@
     }
 
     container.appendChild(wrap);
-    const tx = x(today) - dayW * 10;
-    if (tx > 0) scroll.scrollLeft = tx;
+    const memKey = `p:${weekMode ? 'week' : 'all'}`;
+    if (memKey in scrollMemory) {
+      scroll.scrollLeft = scrollMemory[memKey];
+    } else {
+      const tx = x(today) - dayW * 10;
+      if (tx > 0) scroll.scrollLeft = tx;
+    }
+    scroll.addEventListener('scroll', () => { scrollMemory[memKey] = scroll.scrollLeft; });
   }
 
   function escapeHtml(s) {
