@@ -25,5 +25,8 @@ docker run -d -p 3000:3000 -v clearpath-data:/data \
   -e APP_PASSCODE=your-secret clearpath
 ```
 
-- `APP_PASSCODE` (optional) — if set, the app requires this passcode to enter.
+- `APP_PASSCODE` (optional) — if set, the app requires this passcode once per device;
+  a cookie remembers it for a year. Repeated wrong guesses are slowed down.
+- `ALLOWED_IPS` (optional) — comma-separated IPs that skip the passcode entirely
+  (e.g. office or VPN egress IPs). Everyone else still gets the passcode page.
 - `DATA_DIR` — where the SQLite database lives (defaults to `./data`, `/data` in Docker).
