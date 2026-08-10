@@ -460,6 +460,7 @@
     Gantt.render(document.getElementById('ganttHost'), {
       tasks, deps, cpm, project: p, people: S.people, zoom: ganttZoom, baseline,
       weekStart: ganttZoom === 'week' ? weekStart : null,
+      onLayoutChange: () => route(),
       onTaskClick: (t) => editTask(allTasks.find(x => x.id === t.id) || t, p),
       onTaskChange: (t, dates) => mutate('PUT', `/api/tasks/${t.id}`, dates),
       onAddTask: () => editTask(null, p),
@@ -581,6 +582,7 @@
     Gantt.renderPortfolio(document.getElementById('portfolioHost'), {
       projects: active, tasksByProject, healthByProject, people: shown,
       weekStart: tlZoom === 'week' ? weekStart : null,
+      onLayoutChange: () => route(),
       onOpen: (p) => { location.hash = `#/project/${p.id}`; },
     });
   }

@@ -173,6 +173,11 @@ label { display: block; font-size: 13px; font-weight: 550; color: var(--ink-soft
   border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden;
 }
 .gantt-names { width: 230px; flex-shrink: 0; border-right: 1px solid var(--line); }
+.col-resizer {
+  width: 7px; flex-shrink: 0; cursor: col-resize; margin-left: -4px;
+  border-left: 3px solid transparent; touch-action: none;
+}
+.col-resizer:hover, .col-resizer:active { border-left-color: var(--accent); }
 .gantt-names .gn-head {
   height: 56px; border-bottom: 1px solid var(--line); display: flex;
   align-items: center; padding: 0 16px; font-size: 13px; color: var(--ink-soft); font-weight: 600;

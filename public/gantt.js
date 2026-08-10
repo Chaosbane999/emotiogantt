@@ -8,6 +8,37 @@
   // edits, filters) don't jump the view back to today
   const scrollMemory = {};
 
+  // user-adjustable width for the task-name column (shared by both charts)
+  const NAMES_W_KEY = 'cp_namesw';
+  const namesWidth = () =>
+    Math.max(150, Math.min(440, Number(localStorage.getItem(NAMES_W_KEY)) || 230));
+
+  function addColResizer(wrap, names, onDone) {
+    const rz = document.createElement('div');
+    rz.className = 'col-resizer';
+    rz.title = 'Drag to resize the task column';
+    let drag = null;
+    rz.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      drag = { startX: e.clientX, startW: names.getBoundingClientRect().width };
+      rz.setPointerCapture(e.pointerId);
+    });
+    rz.addEventListener('pointermove', (e) => {
+      if (!drag) return;
+      const w = Math.max(150, Math.min(440, drag.startW + e.clientX - drag.startX));
+      names.style.width = w + 'px';
+    });
+    const finish = () => {
+      if (!drag) return;
+      drag = null;
+      localStorage.setItem(NAMES_W_KEY, Math.round(names.getBoundingClientRect().width));
+      onDone && onDone();
+    };
+    rz.addEventListener('pointerup', finish);
+    rz.addEventListener('pointercancel', finish);
+    wrap.appendChild(rz);
+  }
+
   function el(tag, attrs, parent) {
     const e = document.createElementNS(NS, tag);
     for (const k in attrs) e.setAttribute(k, attrs[k]);
@@ -50,8 +81,9 @@
       min = D.add(min, -3); max = D.add(max, 10);
     }
     const totalDays = D.diff(min, max) + 1;
+    const namesW = namesWidth();
     // stretch to fill the available width rather than leaving dead space
-    const avail = container.clientWidth - 231 - 2;
+    const avail = container.clientWidth - namesW - 8;
     if (avail > 0 && totalDays * dayW < avail) dayW = avail / totalDays;
     const width = totalDays * dayW;
     const height = HEAD_H + tasks.length * ROW_H;
@@ -66,6 +98,7 @@
     // ---- left names column ----
     const names = document.createElement('div');
     names.className = 'gantt-names';
+    names.style.width = namesW + 'px';
     names.innerHTML = '<div class="gn-head">Tasks</div>';
     const rowEls = [];
     let rowDrag = null;
@@ -81,7 +114,7 @@
           ? `<button class="caret" title="${t._collapsed ? 'Show' : 'Hide'} subtasks">${t._collapsed ? '▸' : '▾'}</button>`
           : '') +
         (crit ? '<span class="dot" style="background:var(--critical)" title="On the critical path"></span>' : '<span class="dot" style="background:transparent"></span>') +
-        `<span class="nm">${escapeHtml(t.name)}</span>` +
+        `<span class="nm" title="${escapeHtml(t.name)}">${escapeHtml(t.name)}</span>` +
         (person ? `<span class="who" style="background:${person.color}" title="${escapeHtml(person.name)}">${initials(person.name)}</span>` : '');
       rowEls.push(row);
       const caret = row.querySelector('.caret');
@@ -145,6 +178,7 @@
     addWrap.appendChild(addBtn);
     names.appendChild(addWrap);
     wrap.appendChild(names);
+    addColResizer(wrap, names, opts.onLayoutChange);
 
     // ---- scrollable chart ----
     const scroll = document.createElement('div');
@@ -467,7 +501,8 @@
       min = D.add(min, -4); max = D.add(max, 14);
     }
     const totalDays = D.diff(min, max) + 1;
-    const avail = container.clientWidth - 231 - 2;
+    const namesW = namesWidth();
+    const avail = container.clientWidth - namesW - 8;
     if (avail > 0 && totalDays * dayW < avail) dayW = avail / totalDays;
     const width = totalDays * dayW;
     const height = HEAD_H + rows.reduce((a, r) => a + r.rowH, 0);
@@ -479,6 +514,7 @@
 
     const names = document.createElement('div');
     names.className = 'gantt-names';
+    names.style.width = namesW + 'px';
     names.innerHTML = '<div class="gn-head">Projects</div>';
     for (const r of rows) {
       const health = healthByProject.get(r.p.id);
@@ -489,7 +525,7 @@
       row.innerHTML =
         `<div class="pf-name" style="height:${NAME_BAND}px">
            <span class="dot" style="background:${r.p.color}"></span>
-           <span class="nm">${escapeHtml(r.p.name)}</span>
+           <span class="nm" title="${escapeHtml(r.p.name)}">${escapeHtml(r.p.name)}</span>
            <span class="dot" style="background:${hColor}" title="${health}"></span>
          </div>` +
         r.involved.map(pp =>
@@ -501,6 +537,7 @@
       names.appendChild(row);
     }
     wrap.appendChild(names);
+    addColResizer(wrap, names, opts.onLayoutChange);
 
     const scroll = document.createElement('div');
     scroll.className = 'gantt-scroll';
