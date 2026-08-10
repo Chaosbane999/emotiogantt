@@ -8,6 +8,9 @@
   let S = { projects: [], people: [], tasks: [], deps: [], snapshots: [] };
   let ganttZoom = localStorage.getItem('cp_zoom') || 'day';
   const snapCache = new Map(); // snapshot id -> task list
+  const weekOffsets = new Map(); // project id -> weeks away from the current week
+  const sundayOf = (dateStr) =>
+    (( d ) => { const wd = new Date(d + 'T00:00:00Z').getUTCDay(); return window.CPM.D.add(d, -wd); })(dateStr);
 
   const PROJECT_COLORS = ['#24bbb6', '#6b7fd7', '#6faa8d', '#d9a648', '#c77fb3', '#a08b6f'];
   const PEOPLE_COLORS = ['#24bbb6', '#8a94a6', '#6b7fd7', '#6faa8d', '#c77fb3', '#d9a648'];
@@ -375,6 +378,25 @@
       snapName = (mySnaps.find(s => s.id === snapId) || {}).name || 'snapshot';
     }
 
+    // week mode: which Sunday-to-Saturday window to show
+    if (ganttZoom === 'week' && !weekOffsets.has(pid)) {
+      const ws = sundayOf(D.today()), we = D.add(ws, 6);
+      if (allTasks.length && !allTasks.some(t => t.start <= we && t.end >= ws)) {
+        const open = allTasks.filter(t => !t.done);
+        const target = (open.length ? open : allTasks)
+          .reduce((a, t) => t.start < a ? t.start : a, (open[0] || allTasks[0]).start);
+        weekOffsets.set(pid, Math.round(D.diff(ws, sundayOf(target)) / 7));
+      } else weekOffsets.set(pid, 0);
+    }
+    const weekOff = weekOffsets.get(pid) || 0;
+    const weekStart = D.add(sundayOf(D.today()), weekOff * 7);
+    const weekNav = ganttZoom === 'week' ? `
+      <div class="zoom-toggle" id="weekNav">
+        <button data-wk="-1" title="Previous week">‹</button>
+        <button data-wk="0" title="Jump to this week">${D.human(weekStart)} – ${D.human(D.add(weekStart, 6))}</button>
+        <button data-wk="1" title="Next week">›</button>
+      </div>` : '';
+
     view.innerHTML = `
       <div class="gantt-toolbar">
         <a href="#/projects" class="btn small">← All projects</a>
@@ -384,6 +406,7 @@
         <span class="pill ${health}">${HEALTH_LABEL[health]}</span>
         <div class="spacer"></div>
         ${filter.html}
+        ${weekNav}
         <select id="snapSel" class="toolbar-select" title="Compare against a saved plan">
           <option value="0">No comparison</option>
           ${mySnaps.map(s =>
@@ -408,6 +431,11 @@
     view.querySelectorAll('[data-z]').forEach(b => b.addEventListener('click', () => {
       ganttZoom = b.dataset.z; localStorage.setItem('cp_zoom', ganttZoom); route();
     }));
+    view.querySelectorAll('[data-wk]').forEach(b => b.addEventListener('click', () => {
+      const d = Number(b.dataset.wk);
+      weekOffsets.set(pid, d === 0 ? 0 : weekOff + d);
+      route();
+    }));
     view.querySelector('#editProj').addEventListener('click', () => editProject(p));
     view.querySelector('#snapSel').addEventListener('change', (e) => {
       const v = Number(e.target.value);
@@ -431,6 +459,7 @@
 
     Gantt.render(document.getElementById('ganttHost'), {
       tasks, deps, cpm, project: p, people: S.people, zoom: ganttZoom, baseline,
+      weekStart: ganttZoom === 'week' ? weekStart : null,
       onTaskClick: (t) => editTask(allTasks.find(x => x.id === t.id) || t, p),
       onTaskChange: (t, dates) => mutate('PUT', `/api/tasks/${t.id}`, dates),
       onAddTask: () => editTask(null, p),

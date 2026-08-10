@@ -24,19 +24,27 @@
     const today = D.today();
 
     // date range
-    let min = today, max = today;
-    for (const t of tasks) {
-      const s = t._kind === 'parent' ? t._span.start : t.start;
-      const e = t._kind === 'parent' ? t._span.end : t.end;
-      if (s < min) min = s;
-      if (e > max) max = e;
+    // week mode shows exactly one Sunday-to-Saturday window
+    const weekMode = zoom === 'week' && !!opts.weekStart;
+    let min, max;
+    if (weekMode) {
+      min = opts.weekStart;
+      max = D.add(min, 6);
+    } else {
+      min = today; max = today;
+      for (const t of tasks) {
+        const s = t._kind === 'parent' ? t._span.start : t.start;
+        const e = t._kind === 'parent' ? t._span.end : t.end;
+        if (s < min) min = s;
+        if (e > max) max = e;
+      }
+      if (baseline) for (const b of baseline.values()) {
+        if (b.start < min) min = b.start;
+        if (b.end > max) max = b.end;
+      }
+      if (project.due_date && project.due_date > max) max = project.due_date;
+      min = D.add(min, -3); max = D.add(max, 10);
     }
-    if (baseline) for (const b of baseline.values()) {
-      if (b.start < min) min = b.start;
-      if (b.end > max) max = b.end;
-    }
-    if (project.due_date && project.due_date > max) max = project.due_date;
-    min = D.add(min, -3); max = D.add(max, 10);
     const totalDays = D.diff(min, max) + 1;
     // stretch to fill the available width rather than leaving dead space
     const avail = container.clientWidth - 231 - 2;
@@ -174,7 +182,13 @@
     for (let i = 0; i < totalDays; i++) {
       const date = D.add(min, i);
       const dt = new Date(date + 'T00:00:00Z');
-      if (zoom === 'day') {
+      if (weekMode) {
+        el('text', { x: i * dayW + dayW / 2, y: 44, 'font-size': 11.5,
+          'text-anchor': 'middle', fill: css('--ink-soft') }, svg).textContent =
+          dt.toLocaleDateString(undefined, { weekday: 'short', timeZone: 'UTC' }) + ' ' + dt.getUTCDate();
+        el('line', { x1: i * dayW, y1: HEAD_H - 8, x2: i * dayW, y2: height,
+          stroke: css('--line'), opacity: .6 }, svg);
+      } else if (zoom === 'day') {
         el('text', { x: i * dayW + dayW / 2, y: 44, 'font-size': 11,
           'text-anchor': 'middle', fill: css('--ink-soft') }, svg).textContent = dt.getUTCDate();
       } else if (dt.getUTCDay() === 1) {
@@ -191,6 +205,7 @@
     for (const d of deps) {
       const p = byId.get(d.pred_id), s = byId.get(d.succ_id);
       if (!p || !s) continue;
+      if (weekMode && (p.end < min || p.end > max || s.start < min || s.start > max)) continue;
       const isCrit = cpm.get(p.id)?.critical && cpm.get(s.id)?.critical;
       const x1 = x(p.end) + dayW, y1 = HEAD_H + rowOf.get(p.id) * ROW_H + ROW_H / 2;
       const x2 = x(s.start), y2 = HEAD_H + rowOf.get(s.id) * ROW_H + ROW_H / 2;
@@ -232,9 +247,21 @@
       const c = cpm.get(t.id) || {};
       const y = HEAD_H + i * ROW_H + BAR_PAD;
 
+      // outside the visible week: a quiet hint pointing toward the bar
+      const effStart = t._kind === 'parent' ? t._span.start : t.start;
+      const effEnd = t._kind === 'parent' ? t._span.end : t.end;
+      if (weekMode && (effStart > max || effEnd < min)) {
+        const future = effStart > max;
+        el('text', { x: future ? width - 22 : 8, y: y + 16, 'font-size': 12,
+          fill: css('--ink-soft'), opacity: .55,
+          style: 'pointer-events:none' }, svg).textContent = future ? '⋯ ›' : '‹ ⋯';
+        return;
+      }
+
       // phase summary bar: thin bar spanning its subtasks, with end ticks
       if (t._kind === 'parent') {
-        const s = t._span.start, e = t._span.end;
+        const s = t._span.start < min ? min : t._span.start;
+        const e = t._span.end > max ? max : t._span.end;
         const bx = x(s), bw = (D.diff(s, e) + 1) * dayW;
         const yy = y + 3;
         const g0 = el('g', { style: 'cursor:pointer' }, svg);
@@ -249,7 +276,10 @@
       }
 
       // baseline ghost: where this task sat when the snapshot was taken
-      const b = baseline && baseline.get(t.id);
+      let b = baseline && baseline.get(t.id);
+      if (b && weekMode && (b.start > max || b.end < min)) b = null;
+      if (b && weekMode) b = { ...b,
+        start: b.start < min ? min : b.start, end: b.end > max ? max : b.end };
       if (b) {
         const gy = y + BAR_H + 1.5;
         if (b.milestone) {
@@ -285,7 +315,9 @@
           .textContent = t.name + (hasNote ? ' ✎' : '');
         attachDrag(g, t, 'move', { g });
       } else {
-        const bx = x(t.start), bw = (D.diff(t.start, t.end) + 1) * dayW;
+        const cs = weekMode && t.start < min ? min : t.start;
+        const ce = weekMode && t.end > max ? max : t.end;
+        const bx = x(cs), bw = (D.diff(cs, ce) + 1) * dayW;
         const durDays = D.diff(t.start, t.end);
         const fill = t.done ? css('--ink-soft') : (c.critical ? css('--critical') : project.color);
         const barRect = el('rect', { x: bx, y, width: bw, height: BAR_H, rx: 6, fill,
