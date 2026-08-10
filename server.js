@@ -128,6 +128,67 @@ app.delete('/api/tasks/:id', (req, res) => {
   ok(res);
 });
 
+// ---- settings + AI plan generation ----
+function getSetting(key) {
+  const r = db.prepare('SELECT value FROM settings WHERE key=?').get(key);
+  return r ? r.value : null;
+}
+app.get('/api/settings', (req, res) =>
+  ok(res, { openai: !!(getSetting('openai_key') || process.env.OPENAI_API_KEY) }));
+app.post('/api/settings', (req, res) => {
+  if ('openai_key' in req.body) {
+    const v = (req.body.openai_key || '').trim();
+    if (v) db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?,?)')
+      .run('openai_key', v);
+    else db.prepare('DELETE FROM settings WHERE key=?').run('openai_key');
+  }
+  ok(res);
+});
+
+app.post('/api/ai-plan', async (req, res) => {
+  const key = getSetting('openai_key') || process.env.OPENAI_API_KEY;
+  if (!key) return res.status(400).json({ error: 'no_key' });
+  const { prompt, plan, amendment } = req.body;
+  const today = new Date().toISOString().slice(0, 10);
+  const sys = `You are a pragmatic project planner inside a Gantt tool. Reply with ONLY a JSON object, no prose, shaped exactly like:
+{"name": "Project name", "due_date": "YYYY-MM-DD or null", "tasks": [
+  {"name": "...", "start": "YYYY-MM-DD", "end": "YYYY-MM-DD", "milestone": false,
+   "person": "Name or null", "depends_on": ["exact task names that must finish first"],
+   "notes": "short note or null"}]}
+Rules:
+- Today is ${today}. Start the plan on or after today unless told otherwise.
+- 5–15 tasks. Realistic durations. Milestones are single-day (start = end) gates like "Sign-off" or "Launch".
+- Chain dependencies wherever work genuinely cannot start before another finishes — this is what drives the critical path. Parallel tracks should stay parallel.
+- A task's start must be at least the day after every task it depends on ends.
+- Only assign a person if the user names people; otherwise use null.
+- Task names must be unique.`;
+  const messages = [{ role: 'system', content: sys }];
+  if (plan && amendment) {
+    messages.push({ role: 'user', content:
+      `Current plan JSON:\n${JSON.stringify(plan)}\n\nAmend it as follows: ${amendment}\n\nReturn the complete amended plan JSON.` });
+  } else {
+    messages.push({ role: 'user', content: String(prompt || '') });
+  }
+  try {
+    const r = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: 'gpt-4o-mini',
+        response_format: { type: 'json_object' }, messages }),
+    });
+    if (!r.ok) {
+      const detail = (await r.text()).slice(0, 400);
+      return res.status(502).json({ error: 'openai_error', detail });
+    }
+    const j = await r.json();
+    const parsed = JSON.parse(j.choices[0].message.content);
+    if (!parsed.name || !Array.isArray(parsed.tasks)) throw new Error('bad shape');
+    ok(res, { plan: parsed });
+  } catch (e) {
+    res.status(502).json({ error: 'bad_response', detail: String(e.message) });
+  }
+});
+
 app.post('/api/snapshots', (req, res) => {
   const { project_id, name } = req.body;
   const tasks = db.prepare(

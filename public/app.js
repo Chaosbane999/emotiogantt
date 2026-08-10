@@ -216,6 +216,10 @@
     view.innerHTML = `
       <h1>Projects in hand</h1>
       <p class="subtitle">Everything you're juggling, at a glance.</p>
+      <div class="chip-row">
+        <button class="btn small" id="importCsv">⬆ Import CSV</button>
+        <button class="btn small" id="aiSetup">✨ Set up with AI</button>
+      </div>
       <div class="cards-grid">
         ${cards}
         <div class="card new-card" id="newProject">+ New project</div>
@@ -223,6 +227,8 @@
     view.querySelectorAll('[data-open]').forEach(c =>
       c.addEventListener('click', () => { location.hash = `#/project/${c.dataset.open}`; }));
     document.getElementById('newProject').addEventListener('click', () => editProject(null));
+    document.getElementById('importCsv').addEventListener('click', importDialog);
+    document.getElementById('aiSetup').addEventListener('click', aiDialog);
   }
 
   function editProject(p) {
@@ -595,6 +601,274 @@
       await mutate('DELETE', `/api/people/${p.id}`);
       toast(`${p.name} removed — their tasks are now unassigned.`);
     });
+  }
+
+  // ---------- project import (CSV + AI) ----------
+  const CSV_HEADER = 'Task Name,Start,End,Person,Milestone,Depends On,Notes';
+  const CSV_TEMPLATE = `${CSV_HEADER}
+Kickoff meeting,2026-08-17,2026-08-17,Damon,yes,,Align on scope
+Research,2026-08-18,2026-08-21,Damon,no,Kickoff meeting,
+Design,2026-08-24,2026-08-28,,no,Research,Two concepts to review
+Build,2026-08-31,2026-09-11,,no,Design,
+Review & sign-off,2026-09-14,2026-09-15,Damon,no,Build,
+Launch,2026-09-16,2026-09-16,,yes,Review & sign-off,`;
+  const GPT_PROMPT = `Create a CSV project plan I can import into my Gantt tool. Output ONLY CSV (no prose, no code fences) with this exact header row:
+${CSV_HEADER}
+Rules:
+- Dates are YYYY-MM-DD. Milestone is yes/no; milestones are single-day (Start = End) gates like "Sign-off" or "Launch".
+- "Depends On" lists the exact Task Names (semicolon-separated) that must finish before this task can start — chain these properly for sequential work so the critical path is meaningful; leave parallel work unchained.
+- A task's Start must be at least the day after everything it depends on ends.
+- Unique task names. 5–15 rows. Person can be blank.
+The project is: [describe your project here]`;
+
+  function parseCSV(text) {
+    const rows = []; let row = [], field = '', inQ = false;
+    for (let i = 0; i < text.length; i++) {
+      const ch = text[i];
+      if (inQ) {
+        if (ch === '"') { if (text[i + 1] === '"') { field += '"'; i++; } else inQ = false; }
+        else field += ch;
+      } else if (ch === '"') inQ = true;
+      else if (ch === ',') { row.push(field); field = ''; }
+      else if (ch === '\n' || ch === '\r') {
+        if (ch === '\r' && text[i + 1] === '\n') i++;
+        row.push(field); field = '';
+        if (row.some(f => f.trim() !== '')) rows.push(row);
+        row = [];
+      } else field += ch;
+    }
+    row.push(field);
+    if (row.some(f => f.trim() !== '')) rows.push(row);
+    return rows;
+  }
+
+  function csvToTasks(rows) {
+    const head = rows[0].map(h => h.trim().toLowerCase());
+    const col = (...names) => head.findIndex(h => names.some(n => h.startsWith(n)));
+    const ci = { name: col('task', 'name'), start: col('start'), end: col('end', 'finish'),
+      person: col('person', 'who', 'assigned'), milestone: col('milestone'),
+      deps: col('depends', 'after'), notes: col('note') };
+    const cell = (r, i) => (i >= 0 && r[i] !== undefined ? r[i].trim() : '');
+    return rows.slice(1).map(r => ({
+      name: cell(r, ci.name),
+      start: cell(r, ci.start),
+      end: cell(r, ci.end) || cell(r, ci.start),
+      person: cell(r, ci.person) || null,
+      milestone: /^(y|yes|true|1)$/i.test(cell(r, ci.milestone)),
+      depends_on: cell(r, ci.deps).split(/[;|]/).map(s => s.trim()).filter(Boolean),
+      notes: cell(r, ci.notes) || null,
+    })).filter(t => t.name);
+  }
+
+  function planIssues(plan) {
+    const issues = [];
+    const names = new Set(plan.tasks.map(t => t.name.toLowerCase()));
+    const dateRe = /^\d{4}-\d{2}-\d{2}$/;
+    for (const t of plan.tasks) {
+      if (!dateRe.test(t.start) || !dateRe.test(t.end))
+        issues.push(`"${t.name}": bad or missing date (needs YYYY-MM-DD) — will be skipped`);
+      for (const d of t.depends_on || [])
+        if (!names.has(d.toLowerCase()))
+          issues.push(`"${t.name}" depends on unknown task "${d}" — that link will be skipped`);
+    }
+    return issues;
+  }
+
+  function planPreviewHTML(plan) {
+    const issues = planIssues(plan);
+    return `
+      <h3 style="margin-top:22px;font-size:15px">${esc(plan.name)} — ${plan.tasks.length} tasks${plan.due_date ? ` · due ${D.human(plan.due_date)}` : ''}</h3>
+      ${issues.length ? `<div class="dep-row" style="color:var(--watch);display:block">${issues.map(esc).join('<br>')}</div>` : ''}
+      <div style="max-height:300px;overflow-y:auto">
+      ${plan.tasks.map(t => `<div class="dep-row" style="display:block">
+        <strong>${esc(t.name)}</strong>${t.milestone ? ' <span class="pill neutral">milestone</span>' : ''}
+        ${t.notes ? ' ✎' : ''}<br>
+        <span class="muted" style="font-size:12px">${esc(t.start)}${t.end !== t.start ? ' → ' + esc(t.end) : ''}${t.person ? ' · ' + esc(t.person) : ''}${(t.depends_on || []).length ? ' · after: ' + t.depends_on.map(esc).join(', ') : ''}</span>
+      </div>`).join('')}</div>`;
+  }
+
+  async function createProjectFromPlan(plan, color) {
+    const dateRe = /^\d{4}-\d{2}-\d{2}$/;
+    const tasks = plan.tasks.filter(t => dateRe.test(t.start) && dateRe.test(t.end));
+    // people: match existing by name (case-insensitive), create the rest
+    const peopleMap = new Map(S.people.map(pp => [pp.name.toLowerCase(), pp.id]));
+    for (const nm of [...new Set(tasks.map(t => (t.person || '').trim()).filter(Boolean))]) {
+      if (!peopleMap.has(nm.toLowerCase())) {
+        const r = await api('POST', '/api/people',
+          { name: nm, color: PEOPLE_COLORS[peopleMap.size % PEOPLE_COLORS.length] });
+        peopleMap.set(nm.toLowerCase(), r.id);
+      }
+    }
+    const pr = await api('POST', '/api/projects',
+      { name: plan.name, color, due_date: plan.due_date || null, notes: '' });
+    const idByName = new Map();
+    for (const t of tasks) {
+      let end = t.milestone ? t.start : t.end;
+      if (end < t.start) end = t.start;
+      const r = await api('POST', '/api/tasks', {
+        project_id: pr.id, name: t.name, start: t.start, end,
+        milestone: t.milestone ? 1 : 0,
+        person_id: t.person ? peopleMap.get(t.person.trim().toLowerCase()) || null : null,
+        notes: t.notes || '' });
+      idByName.set(t.name.toLowerCase(), r.id);
+    }
+    for (const t of tasks) {
+      for (const dep of (t.depends_on || [])) {
+        const predId = idByName.get(String(dep).toLowerCase());
+        if (predId) await api('POST', '/api/deps',
+          { project_id: pr.id, pred_id: predId, succ_id: idByName.get(t.name.toLowerCase()) });
+      }
+    }
+    await reload();
+    location.hash = `#/project/${pr.id}`;
+    route();
+    toast(`Project "${plan.name}" created with ${tasks.length} tasks.`);
+  }
+
+  function importDialog() {
+    const color = PROJECT_COLORS[S.projects.length % PROJECT_COLORS.length];
+    let plan = null;
+    openPanel(`
+      <h3>Import a project from CSV</h3>
+      <p class="muted" style="font-size:13px;margin:6px 0 0">Download the template (or copy the
+        instructions into ChatGPT/Claude and let it write the CSV), then choose the file here.
+        You'll see a preview before anything is created.</p>
+      <div class="panel-actions" style="margin-top:14px">
+        <button class="btn small" id="dlTpl">⬇ Download template</button>
+        <button class="btn small" id="cpPrompt">Copy AI instructions</button>
+      </div>
+      <label>Project name</label><input id="i_name" placeholder="e.g. Autumn campaign">
+      <label>Due date (optional)</label><input id="i_due" type="date">
+      <label>CSV file</label><input id="i_file" type="file" accept=".csv,text/csv,text/plain">
+      <div id="i_preview"></div>
+      <div class="panel-actions">
+        <button class="btn primary grow" id="i_create" disabled>Create project</button>
+        <button class="btn" id="i_cancel">Cancel</button>
+      </div>`);
+    panel.querySelector('#i_cancel').addEventListener('click', closePanel);
+    panel.querySelector('#dlTpl').addEventListener('click', () => {
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([CSV_TEMPLATE], { type: 'text/csv' }));
+      a.download = 'emotiogantt-template.csv';
+      a.click();
+      URL.revokeObjectURL(a.href);
+    });
+    panel.querySelector('#cpPrompt').addEventListener('click', async () => {
+      await navigator.clipboard.writeText(GPT_PROMPT);
+      toast('Instructions copied — paste them into your AI of choice.');
+    });
+    panel.querySelector('#i_file').addEventListener('change', async (e) => {
+      const f = e.target.files[0];
+      if (!f) return;
+      const rows = parseCSV(await f.text());
+      if (rows.length < 2) {
+        panel.querySelector('#i_preview').innerHTML =
+          '<p class="err">That file looks empty — is it the right CSV?</p>';
+        return;
+      }
+      const nameInput = panel.querySelector('#i_name');
+      if (!nameInput.value.trim()) nameInput.value = f.name.replace(/\.[^.]+$/, '');
+      plan = { name: '', due_date: null, tasks: csvToTasks(rows) };
+      panel.querySelector('#i_preview').innerHTML =
+        planPreviewHTML({ ...plan, name: nameInput.value.trim() || 'Preview' });
+      panel.querySelector('#i_create').disabled = !plan.tasks.length;
+    });
+    panel.querySelector('#i_create').addEventListener('click', async () => {
+      const name = panel.querySelector('#i_name').value.trim();
+      if (!plan || !name) { toast('Give the project a name first.'); return; }
+      plan.name = name;
+      plan.due_date = panel.querySelector('#i_due').value || null;
+      closePanel();
+      await createProjectFromPlan(plan, color);
+    });
+  }
+
+  function aiDialog() {
+    const color = PROJECT_COLORS[S.projects.length % PROJECT_COLORS.length];
+    api('GET', '/api/settings').then(({ openai }) => openai ? promptForm() : keyForm());
+
+    function keyForm() {
+      openPanel(`
+        <h3>Set up with AI</h3>
+        <p class="muted" style="font-size:13px;margin:6px 0 0">Paste an OpenAI API key once and
+          it's stored on your server (never shown again here). Then describe any project and
+          get a draft plan to review.</p>
+        <label>OpenAI API key</label><input id="k_key" type="password" placeholder="sk-…">
+        <div class="panel-actions">
+          <button class="btn primary grow" id="k_save">Save key</button>
+          <button class="btn" id="k_cancel">Cancel</button>
+        </div>`);
+      panel.querySelector('#k_cancel').addEventListener('click', closePanel);
+      panel.querySelector('#k_save').addEventListener('click', async () => {
+        const v = panel.querySelector('#k_key').value.trim();
+        if (!v) return;
+        await api('POST', '/api/settings', { openai_key: v });
+        promptForm();
+      });
+    }
+
+    function promptForm() {
+      openPanel(`
+        <h3>Set up with AI</h3>
+        <p class="muted" style="font-size:13px;margin:6px 0 0">Describe the project — what it is,
+          rough timescales, who's involved. You'll get an outline to approve or amend before
+          anything is created.</p>
+        <label>Describe your project</label>
+        <textarea id="a_prompt" rows="6" placeholder="e.g. Launch a small e-commerce site for my candle business by mid-October. Me and Lou. Needs branding, product photos, Shopify build, payment setup and a soft launch."></textarea>
+        <div class="panel-actions">
+          <button class="btn primary grow" id="a_go">Draft the plan</button>
+          <button class="btn" id="a_cancel">Cancel</button>
+        </div>
+        <p style="margin-top:14px"><button class="btn small" id="a_key">Change API key</button></p>
+        <p id="a_err" class="err hidden"></p>`);
+      panel.querySelector('#a_cancel').addEventListener('click', closePanel);
+      panel.querySelector('#a_key').addEventListener('click', keyForm);
+      panel.querySelector('#a_go').addEventListener('click', () => {
+        const prompt = panel.querySelector('#a_prompt').value.trim();
+        if (prompt) draft({ prompt });
+      });
+    }
+
+    async function draft(body) {
+      const go = panel.querySelector('#a_go') || panel.querySelector('#a_amend_go');
+      if (go) { go.disabled = true; go.textContent = 'Thinking…'; }
+      try {
+        const { plan } = await api('POST', '/api/ai-plan', body);
+        preview(plan);
+      } catch (e) {
+        const err = panel.querySelector('#a_err');
+        if (err) {
+          err.textContent = 'The AI call failed — check the key and try again. ' + e.message.slice(0, 160);
+          err.classList.remove('hidden');
+        }
+        if (go) { go.disabled = false; go.textContent = 'Draft the plan'; }
+      }
+    }
+
+    function preview(plan) {
+      openPanel(`
+        <h3>Here's the proposed plan</h3>
+        <p class="muted" style="font-size:13px;margin:6px 0 0">Nothing is created yet. Amend it
+          below as many times as you like, then commit it to a Gantt.</p>
+        ${planPreviewHTML(plan)}
+        <label>Amendments (optional)</label>
+        <textarea id="a_amend" rows="3" placeholder="e.g. add a week of contingency before launch, and give the photo tasks to Lou"></textarea>
+        <div class="panel-actions">
+          <button class="btn" id="a_amend_go">Apply amendment</button>
+          <button class="btn primary grow" id="a_create">Create project</button>
+          <button class="btn" id="a_cancel2">Cancel</button>
+        </div>
+        <p id="a_err" class="err hidden"></p>`);
+      panel.querySelector('#a_cancel2').addEventListener('click', closePanel);
+      panel.querySelector('#a_amend_go').addEventListener('click', () => {
+        const amendment = panel.querySelector('#a_amend').value.trim();
+        if (amendment) draft({ plan, amendment });
+      });
+      panel.querySelector('#a_create').addEventListener('click', async () => {
+        closePanel();
+        await createProjectFromPlan(plan, color);
+      });
+    }
   }
 
   // ---------- router ----------
