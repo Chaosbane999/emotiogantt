@@ -340,24 +340,39 @@
     if (tx > 0) scroll.scrollLeft = tx;
   }
 
-  // All projects on one timeline — see how they overlap
+  // All projects on one timeline — see how they overlap, with a lane per person
+  // so double-bookings across projects show up in coral.
   function renderPortfolio(container, opts) {
-    const { projects, tasksByProject, healthByProject, onOpen } = opts;
-    const dayW = 13;
+    const { projects, tasksByProject, healthByProject, people, onOpen } = opts;
+    const dayW = 14;
+    const PB_H = 22;          // project span bar height
+    const NAME_BAND = 40;     // vertical space for the project bar band
+    const LANE_H = 18;        // vertical space per person lane
     const today = D.today();
+    const peopleById = new Map(people.map(p => [p.id, p]));
+    const allTasks = [...tasksByProject.values()].flat();
+
+    // people involved per project, and per-row layout
+    const rows = projects.map(p => {
+      const tasks = tasksByProject.get(p.id) || [];
+      const ids = [...new Set(tasks.filter(t => t.person_id).map(t => t.person_id))];
+      const involved = ids.map(id => peopleById.get(id)).filter(Boolean)
+        .sort((a, b) => a.name.localeCompare(b.name));
+      return { p, tasks, involved, rowH: NAME_BAND + involved.length * LANE_H + 12 };
+    });
 
     let min = today, max = today;
-    for (const p of projects) {
-      for (const t of (tasksByProject.get(p.id) || [])) {
+    for (const r of rows) {
+      for (const t of r.tasks) {
         if (t.start < min) min = t.start;
         if (t.end > max) max = t.end;
       }
-      if (p.due_date && p.due_date > max) max = p.due_date;
+      if (r.p.due_date && r.p.due_date > max) max = r.p.due_date;
     }
     min = D.add(min, -4); max = D.add(max, 14);
     const totalDays = D.diff(min, max) + 1;
     const width = totalDays * dayW;
-    const height = HEAD_H + projects.length * ROW_H;
+    const height = HEAD_H + rows.reduce((a, r) => a + r.rowH, 0);
     const x = (date) => D.diff(min, date) * dayW;
 
     container.innerHTML = '';
@@ -367,16 +382,24 @@
     const names = document.createElement('div');
     names.className = 'gantt-names';
     names.innerHTML = '<div class="gn-head">Projects</div>';
-    for (const p of projects) {
-      const row = document.createElement('div');
-      row.className = 'gn-row';
-      const health = healthByProject.get(p.id);
+    for (const r of rows) {
+      const health = healthByProject.get(r.p.id);
       const hColor = health === 'late' ? 'var(--late)' : health === 'watch' ? 'var(--watch)' : 'var(--good)';
+      const row = document.createElement('div');
+      row.className = 'pf-row';
+      row.style.height = r.rowH + 'px';
       row.innerHTML =
-        `<span class="dot" style="background:${p.color}"></span>` +
-        `<span class="nm">${escapeHtml(p.name)}</span>` +
-        `<span class="dot" style="background:${hColor}" title="${health}"></span>`;
-      row.addEventListener('click', () => onOpen(p));
+        `<div class="pf-name" style="height:${NAME_BAND}px">
+           <span class="dot" style="background:${r.p.color}"></span>
+           <span class="nm">${escapeHtml(r.p.name)}</span>
+           <span class="dot" style="background:${hColor}" title="${health}"></span>
+         </div>` +
+        r.involved.map(pp =>
+          `<div class="pf-person" style="height:${LANE_H}px">
+             <span class="who" style="background:${pp.color};width:16px;height:16px;font-size:9px">${initials(pp.name)}</span>
+             <span class="pf-pname">${escapeHtml(pp.name)}</span>
+           </div>`).join('');
+      row.addEventListener('click', () => onOpen(r.p));
       names.appendChild(row);
     }
     wrap.appendChild(names);
@@ -388,8 +411,13 @@
     scroll.appendChild(svg);
     wrap.appendChild(scroll);
 
-    for (let r = 0; r <= projects.length; r++) {
-      el('line', { x1: 0, y1: HEAD_H + r * ROW_H, x2: width, y2: HEAD_H + r * ROW_H,
+    let yCursor = HEAD_H;
+    el('line', { x1: 0, y1: yCursor, x2: width, y2: yCursor,
+      stroke: css('--line'), 'stroke-width': 1 }, svg);
+    for (const r of rows) {
+      r.top = yCursor;
+      yCursor += r.rowH;
+      el('line', { x1: 0, y1: yCursor, x2: width, y2: yCursor,
         stroke: css('--line'), 'stroke-width': 1 }, svg);
     }
 
@@ -427,43 +455,69 @@
         'text-anchor': 'middle', fill: '#fff' }, svg).textContent = 'Today';
     }
 
-    projects.forEach((p, i) => {
-      const tasks = tasksByProject.get(p.id) || [];
-      const y = HEAD_H + i * ROW_H + BAR_PAD;
+    const overlap = (a, b) => a.start <= b.end && b.start <= a.end;
+
+    for (const r of rows) {
+      const { p, tasks, involved } = r;
+      const y = r.top + (NAME_BAND - PB_H) / 2 + 4;
       if (tasks.length) {
         const s = tasks.reduce((a, t) => t.start < a ? t.start : a, tasks[0].start);
         const e = tasks.reduce((a, t) => t.end > a ? t.end : a, tasks[0].end);
         const bx = x(s), bw = (D.diff(s, e) + 1) * dayW;
         const g = el('g', { style: 'cursor:pointer' }, svg);
-        // full span, soft
-        el('rect', { x: bx, y, width: bw, height: BAR_H, rx: 6,
+        el('rect', { x: bx, y, width: bw, height: PB_H, rx: 6,
           fill: p.color, opacity: .3 }, g);
-        // progress: fraction of task-days completed
         const totalTaskDays = tasks.reduce((a, t) => a + D.diff(t.start, t.end) + 1, 0);
         const doneTaskDays = tasks.filter(t => t.done)
           .reduce((a, t) => a + D.diff(t.start, t.end) + 1, 0);
         const frac = totalTaskDays ? doneTaskDays / totalTaskDays : 0;
         if (frac > 0) {
-          el('rect', { x: bx, y, width: Math.max(bw * frac, 6), height: BAR_H,
+          el('rect', { x: bx, y, width: Math.max(bw * frac, 6), height: PB_H,
             rx: 6, fill: p.color, opacity: .9 }, g);
         }
-        // milestones as small diamonds on the span
         for (const t of tasks.filter(t => t.milestone)) {
-          const cx = x(t.start) + dayW / 2, cy = y + BAR_H / 2, r = 6;
+          const cx = x(t.start) + dayW / 2, cy = y + PB_H / 2, mr = 6;
           el('path', {
-            d: `M ${cx} ${cy - r} L ${cx + r} ${cy} L ${cx} ${cy + r} L ${cx - r} ${cy} Z`,
+            d: `M ${cx} ${cy - mr} L ${cx + mr} ${cy} L ${cx} ${cy + mr} L ${cx - mr} ${cy} Z`,
             fill: t.done ? css('--ink-soft') : p.color, stroke: css('--surface'),
             'stroke-width': 1.5 }, g);
         }
         g.addEventListener('click', () => onOpen(p));
       }
-      // due marker
+
+      // one lane per person: their work on THIS project; coral where they're
+      // also booked on another project at the same time
+      involved.forEach((pp, li) => {
+        const ly = r.top + NAME_BAND + li * LANE_H + (LANE_H - 10) / 2;
+        const mine = tasks.filter(t => t.person_id === pp.id && !t.milestone);
+        const elsewhere = allTasks.filter(t =>
+          t.person_id === pp.id && t.project_id !== p.id && !t.done && !t.milestone);
+        for (const t of mine) {
+          const seg = el('rect', {
+            x: x(t.start), y: ly, width: (D.diff(t.start, t.end) + 1) * dayW,
+            height: 10, rx: 5, fill: pp.color, opacity: t.done ? .25 : .65 }, svg);
+          el('title', {}, seg).textContent = `${pp.name}: ${t.name}`;
+          if (t.done) continue;
+          for (const o of elsewhere.filter(o => overlap(t, o))) {
+            const os = t.start > o.start ? t.start : o.start;
+            const oe = t.end < o.end ? t.end : o.end;
+            const conflictSeg = el('rect', {
+              x: x(os), y: ly, width: (D.diff(os, oe) + 1) * dayW,
+              height: 10, rx: 5, fill: css('--critical'), opacity: .95 }, svg);
+            const op = projects.find(pr => pr.id === o.project_id);
+            el('title', {}, conflictSeg).textContent =
+              `${pp.name} is double-booked: also on "${op ? op.name : 'another project'}" (${o.name}) ${D.human(os)}–${D.human(oe)}`;
+          }
+        }
+      });
+
+      // due marker across the whole row band
       if (p.due_date) {
         const dx = x(p.due_date) + dayW;
-        el('line', { x1: dx, y1: y - 2, x2: dx, y2: y + BAR_H + 2,
+        el('line', { x1: dx, y1: r.top + 4, x2: dx, y2: r.top + r.rowH - 4,
           stroke: css('--watch'), 'stroke-width': 2 }, svg);
       }
-    });
+    }
 
     container.appendChild(wrap);
     const tx = x(today) - dayW * 10;

@@ -373,7 +373,9 @@
     const active = S.projects.filter(p => !p.archived);
     view.innerHTML = `
       <h1>Timeline</h1>
-      <p class="subtitle">All projects side by side — solid colour is work done, soft colour is the road ahead. Amber line = due date.</p>
+      <p class="subtitle">All projects side by side, with a lane for each person's work.
+        <span style="color:var(--critical);font-weight:600">Coral</span> = they're booked on two projects at once.
+        Amber line = due date.</p>
       <div id="portfolioHost"></div>`;
     if (!active.length) {
       document.getElementById('portfolioHost').innerHTML =
@@ -384,7 +386,7 @@
     const healthByProject = new Map(active.map(p =>
       [p.id, projectHealth(p, projTasks(p.id), cpmFor(p.id))]));
     Gantt.renderPortfolio(document.getElementById('portfolioHost'), {
-      projects: active, tasksByProject, healthByProject,
+      projects: active, tasksByProject, healthByProject, people: S.people,
       onOpen: (p) => { location.hash = `#/project/${p.id}`; },
     });
   }
