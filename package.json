@@ -1,5 +1,5 @@
 {
-  "name": "clearpath",
+  "name": "emotiogantt",
   "version": "1.0.0",
   "description": "A calm, neurodivergent-friendly Gantt tool with critical paths",
   "main": "server.js",

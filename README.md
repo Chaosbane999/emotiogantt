@@ -1,4 +1,4 @@
-# ClearPath
+# EmotioGantt
 
 A calm, neurodivergent-friendly Gantt tool. Just the essentials: projects, timelines,
 critical paths, and a clear answer to "what should I be doing right now?"

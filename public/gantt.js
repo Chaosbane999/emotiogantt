@@ -18,7 +18,8 @@
   }
 
   function render(container, opts) {
-    const { tasks, deps, cpm, project, people, zoom, onTaskClick, onTaskChange, onAddTask } = opts;
+    const { tasks, deps, cpm, project, people, zoom,
+      onTaskClick, onTaskChange, onAddTask, onReorder } = opts;
     const dayW = zoom === 'day' ? 36 : 13;
     const today = D.today();
 
@@ -42,18 +43,63 @@
     const names = document.createElement('div');
     names.className = 'gantt-names';
     names.innerHTML = '<div class="gn-head">Tasks</div>';
-    for (const t of tasks) {
+    const rowEls = [];
+    let rowDrag = null;
+    tasks.forEach((t, idx) => {
       const row = document.createElement('div');
       row.className = 'gn-row' + (t.done ? ' done' : '');
       const c = cpm.get(t.id);
       const person = t.person_id ? peopleById.get(t.person_id) : null;
       row.innerHTML =
+        '<span class="grab" title="Drag to reorder">⋮⋮</span>' +
         (c && c.critical ? '<span class="dot" style="background:var(--critical)" title="On the critical path"></span>' : '<span class="dot" style="background:transparent"></span>') +
         `<span class="nm">${escapeHtml(t.name)}</span>` +
         (person ? `<span class="who" style="background:${person.color}" title="${escapeHtml(person.name)}">${initials(person.name)}</span>` : '');
-      row.addEventListener('click', () => onTaskClick(t));
+      rowEls.push(row);
+
+      row.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        rowDrag = { row, idx, startY: e.clientY, active: false, target: idx };
+        row.setPointerCapture(e.pointerId);
+      });
+      row.addEventListener('pointermove', (e) => {
+        if (!rowDrag || rowDrag.row !== row) return;
+        const dy = e.clientY - rowDrag.startY;
+        if (!rowDrag.active) {
+          if (Math.abs(dy) < 6) return;
+          rowDrag.active = true;
+          row.classList.add('dragging');
+        }
+        row.style.transform = `translateY(${dy}px)`;
+        const target = Math.max(0, Math.min(tasks.length - 1, idx + Math.round(dy / ROW_H)));
+        rowDrag.target = target;
+        rowEls.forEach((r, i) => {
+          if (r === row) return;
+          let shift = 0;
+          if (idx < target && i > idx && i <= target) shift = -ROW_H;
+          if (idx > target && i < idx && i >= target) shift = ROW_H;
+          r.style.transform = shift ? `translateY(${shift}px)` : '';
+        });
+      });
+      const finishRow = () => {
+        if (!rowDrag || rowDrag.row !== row) return;
+        const { active, target } = rowDrag;
+        rowDrag = null;
+        row.classList.remove('dragging');
+        if (!active) { onTaskClick(t); return; }
+        if (target !== idx && onReorder) {
+          const order = tasks.map(x => x.id);
+          order.splice(idx, 1);
+          order.splice(target, 0, t.id);
+          onReorder(order);
+        } else {
+          rowEls.forEach(r => { r.style.transform = ''; });
+        }
+      };
+      row.addEventListener('pointerup', finishRow);
+      row.addEventListener('pointercancel', finishRow);
       names.appendChild(row);
-    }
+    });
     const addWrap = document.createElement('div');
     addWrap.className = 'gantt-add';
     const addBtn = document.createElement('button');
@@ -67,7 +113,8 @@
     // ---- scrollable chart ----
     const scroll = document.createElement('div');
     scroll.className = 'gantt-scroll';
-    const svg = el('svg', { class: 'gantt', width, height: height + 10 });
+    const svg = el('svg', { class: 'gantt', width, height: height + 10,
+      style: 'touch-action:none;user-select:none;-webkit-user-select:none;display:block' });
     scroll.appendChild(svg);
     wrap.appendChild(scroll);
 
@@ -171,17 +218,20 @@
         }, g);
         el('text', { x: cx + r + 6, y: cy + 4, 'font-size': 12, fill: css('--ink-soft') }, g)
           .textContent = t.name;
-        attachDrag(g, t, 'move');
+        attachDrag(g, t, 'move', { g });
       } else {
         const bx = x(t.start), bw = (D.diff(t.start, t.end) + 1) * dayW;
+        const durDays = D.diff(t.start, t.end);
         const fill = t.done ? css('--ink-soft') : (c.critical ? css('--critical') : project.color);
-        el('rect', { x: bx, y, width: bw, height: BAR_H, rx: 6, fill,
-          opacity: t.done ? .38 : .92 }, g);
+        const barRect = el('rect', { x: bx, y, width: bw, height: BAR_H, rx: 6, fill,
+          opacity: t.done ? .38 : .92, class: 'bar' }, g);
+        let critRect = null;
         if (c.critical && !t.done) {
-          el('rect', { x: bx, y, width: bw, height: BAR_H, rx: 6, fill: 'none',
+          critRect = el('rect', { x: bx, y, width: bw, height: BAR_H, rx: 6, fill: 'none',
             stroke: css('--critical'), 'stroke-width': 2 }, g);
         }
-        const label = el('text', { 'font-size': 12, 'font-weight': 550 }, g);
+        const label = el('text', { 'font-size': 12, 'font-weight': 550,
+          style: 'pointer-events:none' }, g);
         label.textContent = t.name + (t.done ? ' ✓' : '');
         if (bw > t.name.length * 7 + 16) {
           label.setAttribute('x', bx + 8); label.setAttribute('y', y + 16);
@@ -190,40 +240,66 @@
           label.setAttribute('x', bx + bw + 8); label.setAttribute('y', y + 16);
           label.setAttribute('fill', css('--ink-soft'));
         }
-        attachDrag(g, t, 'move');
-        // resize handles
+        const ctx = { g, barRect, critRect, bx, bw, durDays };
+        attachDrag(barRect, t, 'move', ctx);
+        // resize handles: generous hit area + visible grip on hover
         for (const side of ['left', 'right']) {
-          const hx = side === 'left' ? bx - 3 : bx + bw - 5;
-          const h = el('rect', { x: hx, y, width: 8, height: BAR_H, fill: 'transparent',
-            style: 'cursor:ew-resize' }, g);
-          attachDrag(h, t, side);
+          const hx = side === 'left' ? bx - 6 : bx + bw - 8;
+          el('rect', { class: 'grip', 'pointer-events': 'none', rx: 1.5,
+            x: side === 'left' ? bx + 3 : bx + bw - 6, y: y + 5,
+            width: 3, height: BAR_H - 10, fill: '#fff', opacity: 0 }, g);
+          const h = el('rect', { x: hx, y: y - 4, width: 14, height: BAR_H + 8,
+            fill: 'transparent', style: 'cursor:ew-resize' }, g);
+          attachDrag(h, t, side, ctx);
         }
+        g.addEventListener('pointerenter', () =>
+          g.querySelectorAll('.grip').forEach(r => r.setAttribute('opacity', .85)));
+        g.addEventListener('pointerleave', () =>
+          g.querySelectorAll('.grip').forEach(r => r.setAttribute('opacity', 0)));
       }
     });
 
     // ---- drag logic ----
     let drag = null;
-    function attachDrag(target, task, mode) {
+    function attachDrag(target, task, mode, ctx) {
+      const clampDays = (days) => {
+        // never let a bar invert: keep at least 1 day
+        if (mode === 'left') return Math.min(days, ctx.durDays ?? 0);
+        if (mode === 'right') return Math.max(days, -(ctx.durDays ?? 0));
+        return days;
+      };
+      const preview = (days) => {
+        if (mode === 'move') {
+          ctx.g.style.transform = `translateX(${days * dayW}px)`;
+        } else if (ctx.barRect) {
+          const nx = mode === 'left' ? ctx.bx + days * dayW : ctx.bx;
+          const nw = mode === 'left' ? ctx.bw - days * dayW : ctx.bw + days * dayW;
+          for (const r of [ctx.barRect, ctx.critRect]) {
+            if (!r) continue;
+            r.setAttribute('x', nx); r.setAttribute('width', Math.max(nw, dayW));
+          }
+        }
+      };
       target.addEventListener('pointerdown', (e) => {
         e.preventDefault(); e.stopPropagation();
-        drag = { task, mode, startX: e.clientX, moved: false };
+        drag = { task, mode, startX: e.clientX, moved: false, days: 0 };
         target.setPointerCapture(e.pointerId);
       });
       target.addEventListener('pointermove', (e) => {
-        if (!drag || drag.task !== task) return;
-        const days = Math.round((e.clientX - drag.startX) / dayW);
+        if (!drag || drag.task !== task || drag.mode !== mode) return;
+        const days = clampDays(Math.round((e.clientX - drag.startX) / dayW));
         if (days !== 0) drag.moved = true;
         drag.days = days;
-        // live preview: shift the group
-        if (drag.mode === 'move') target.parentNode.style.transform = `translateX(${days * dayW}px)`;
+        preview(days);
       });
-      target.addEventListener('pointerup', () => {
-        if (!drag || drag.task !== task) return;
-        const { mode, days = 0, moved } = drag;
+      const finish = () => {
+        if (!drag || drag.task !== task || drag.mode !== mode) return;
+        const { days = 0, moved } = drag;
         drag = null;
         if (!moved || days === 0) {
-          if (!moved) onTaskClick(task);
-          if (target.parentNode.style) target.parentNode.style.transform = '';
+          ctx.g.style.transform = '';
+          preview(0);
+          if (!moved && mode === 'move') onTaskClick(task);
           return;
         }
         let { start, end } = task;
@@ -231,7 +307,9 @@
         if (mode === 'left') { start = D.add(start, days); if (start > end) start = end; }
         if (mode === 'right') { end = D.add(end, days); if (end < start) end = start; }
         onTaskChange(task, { start, end });
-      });
+      };
+      target.addEventListener('pointerup', finish);
+      target.addEventListener('pointercancel', finish);
     }
 
     container.appendChild(wrap);

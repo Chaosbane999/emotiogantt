@@ -8,8 +8,8 @@
   let S = { projects: [], people: [], tasks: [], deps: [] };
   let ganttZoom = localStorage.getItem('cp_zoom') || 'day';
 
-  const PROJECT_COLORS = ['#6b7fd7', '#6faa8d', '#d9a648', '#c77fb3', '#5ba8b8', '#a08b6f'];
-  const PEOPLE_COLORS = ['#8a94a6', '#6b7fd7', '#6faa8d', '#c77fb3', '#5ba8b8', '#d9a648'];
+  const PROJECT_COLORS = ['#24bbb6', '#6b7fd7', '#6faa8d', '#d9a648', '#c77fb3', '#a08b6f'];
+  const PEOPLE_COLORS = ['#24bbb6', '#8a94a6', '#6b7fd7', '#6faa8d', '#c77fb3', '#d9a648'];
 
   // ---------- data ----------
   async function api(method, url, body) {
@@ -251,6 +251,7 @@
       onTaskClick: (t) => editTask(t, p),
       onTaskChange: (t, dates) => mutate('PUT', `/api/tasks/${t.id}`, dates),
       onAddTask: () => editTask(null, p),
+      onReorder: (ids) => mutate('POST', '/api/tasks/reorder', { ids }),
     });
   }
 

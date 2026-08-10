@@ -6,8 +6,8 @@
   --ink: #33383f;
   --ink-soft: #6d7480;
   --line: #e3e3dd;
-  --accent: #6b7fd7;
-  --accent-soft: #eceffa;
+  --accent: #24bbb6;
+  --accent-soft: #e2f6f5;
   --critical: #d96c5b;
   --critical-soft: #fbeeec;
   --good: #6faa8d;
@@ -26,8 +26,8 @@
   --ink: #dcdfe4;
   --ink-soft: #949aa5;
   --line: #33373f;
-  --accent: #8b9de6;
-  --accent-soft: #2b3044;
+  --accent: #35cfc9;
+  --accent-soft: #1e3a39;
   --critical: #e08574;
   --critical-soft: #3c2b28;
   --good: #7fb69b;
@@ -177,10 +177,21 @@ label { display: block; font-size: 13px; font-weight: 550; color: var(--ink-soft
   align-items: center; padding: 0 16px; font-size: 13px; color: var(--ink-soft); font-weight: 600;
 }
 .gn-row {
-  height: 40px; display: flex; align-items: center; gap: 8px; padding: 0 10px 0 16px;
+  height: 40px; display: flex; align-items: center; gap: 8px; padding: 0 10px 0 6px;
   border-bottom: 1px solid var(--line); cursor: pointer; font-size: 14px;
+  position: relative; transition: transform .12s ease; touch-action: none;
+  background: var(--surface);
 }
 .gn-row:hover { background: var(--surface2); }
+.gn-row .grab {
+  color: var(--ink-soft); opacity: 0; font-size: 11px; letter-spacing: -2px;
+  cursor: grab; flex-shrink: 0; width: 12px;
+}
+.gn-row:hover .grab { opacity: .7; }
+.gn-row.dragging {
+  z-index: 6; box-shadow: var(--shadow); background: var(--surface2);
+  transition: none; cursor: grabbing;
+}
 .gn-row .nm { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .gn-row.done .nm { color: var(--ink-soft); text-decoration: line-through; }
 .gn-row .who {

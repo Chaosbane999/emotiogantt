@@ -62,7 +62,7 @@ app.get('/api/state', (req, res) => ok(res, fullState()));
 app.post('/api/projects', (req, res) => {
   const { name, color, due_date, notes } = req.body;
   const r = db.prepare('INSERT INTO projects (name, color, due_date, notes) VALUES (?,?,?,?)')
-    .run(name, color || '#6b7fd7', due_date || null, notes || '');
+    .run(name, color || '#24bbb6', due_date || null, notes || '');
   ok(res, { id: r.lastInsertRowid });
 });
 app.put('/api/projects/:id', (req, res) => {
@@ -115,6 +115,12 @@ app.put('/api/tasks/:id', (req, res) => {
         m.person_id || null, m.notes, m.sort_order, t.id);
   ok(res);
 });
+app.post('/api/tasks/reorder', (req, res) => {
+  const ids = req.body.ids || [];
+  const stmt = db.prepare('UPDATE tasks SET sort_order=? WHERE id=?');
+  ids.forEach((id, i) => stmt.run(i, id));
+  ok(res);
+});
 app.delete('/api/tasks/:id', (req, res) => {
   db.prepare('DELETE FROM tasks WHERE id=?').run(req.params.id);
   ok(res);
@@ -136,4 +142,4 @@ app.delete('/api/deps/:id', (req, res) => {
   ok(res);
 });
 
-app.listen(PORT, () => console.log(`ClearPath running on http://localhost:${PORT}`));
+app.listen(PORT, () => console.log(`EmotioGantt running on http://localhost:${PORT}`));
