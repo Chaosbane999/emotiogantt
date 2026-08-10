@@ -1,0 +1,16 @@
+{
+  "name": "clearpath",
+  "version": "1.0.0",
+  "description": "A calm, neurodivergent-friendly Gantt tool with critical paths",
+  "main": "server.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2"
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}

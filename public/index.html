@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ClearPath</title>
+<link rel="stylesheet" href="style.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🛤️</text></svg>">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">Clear<span>Path</span></div>
+  <nav>
+    <a href="#/today" data-nav="today">Today</a>
+    <a href="#/projects" data-nav="projects">Projects</a>
+    <a href="#/people" data-nav="people">People</a>
+  </nav>
+  <button id="themeToggle" class="icon-btn" title="Toggle light/dark">◐</button>
+</header>
+<main id="view"></main>
+<div id="panel" class="panel hidden"></div>
+<div id="scrim" class="scrim hidden"></div>
+<script src="cpm.js"></script>
+<script src="gantt.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

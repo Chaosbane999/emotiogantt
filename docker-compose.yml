@@ -1,0 +1,17 @@
+services:
+  clearpath:
+    build: https://github.com/agiadaccount-oss/clearpath.git
+    volumes:
+      - clearpath-data:/data
+    environment:
+      # set the real passcode in the Hostinger Docker Manager yaml, not here
+      - APP_PASSCODE=${APP_PASSCODE:-}
+    labels:
+      - traefik.enable=true
+      - "traefik.http.routers.clearpath.rule=Host(`gantt.emotioflow.com`)"
+      - traefik.http.routers.clearpath.entrypoints=websecure
+      - traefik.http.routers.clearpath.tls.certresolver=letsencrypt
+      - traefik.http.services.clearpath.loadbalancer.server.port=3000
+    restart: unless-stopped
+volumes:
+  clearpath-data:
