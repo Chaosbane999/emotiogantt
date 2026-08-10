@@ -160,7 +160,7 @@
           const order = tasks.map(x => x.id);
           order.splice(idx, 1);
           order.splice(target, 0, t.id);
-          onReorder(order);
+          onReorder(order, t.id);
         } else {
           rowEls.forEach(r => { r.style.transform = ''; });
         }

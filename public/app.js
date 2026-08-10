@@ -472,30 +472,58 @@
         localStorage.setItem(collKey, JSON.stringify([...c]));
         route();
       },
-      onReorder: (ids) => {
-        // translate the dragged display order into a sane hierarchy order:
-        // roots keep block structure, children stay within their own phase
+      onReorder: async (ids, draggedId) => {
+        // translate the dragged display order into hierarchy: dropping a task
+        // inside a phase's block joins that phase; dropping at top level leaves it
         const byId = new Map(allTasks.map(t => [t.id, t]));
-        const rootOrder = ids.filter(id => byId.get(id) && !byId.get(id).parent_id);
-        for (const t of allTasks.filter(t => !t.parent_id))
+        const phaseIds = new Set(allTasks.filter(t => t.parent_id).map(t => t.parent_id));
+        const dragged = byId.get(draggedId);
+        let newParent = dragged ? (dragged.parent_id || null) : null;
+
+        if (dragged && !phaseIds.has(dragged.id)) {
+          const pos = ids.indexOf(draggedId);
+          const prev = pos > 0 ? byId.get(ids[pos - 1]) : null;
+          const next = pos < ids.length - 1 ? byId.get(ids[pos + 1]) : null;
+          if (!prev) newParent = null;                       // dropped at the very top
+          else if (phaseIds.has(prev.id))                    // right under a phase row
+            newParent = collapsed.has(prev.id) ? null : prev.id;
+          else if (prev.parent_id) newParent = prev.parent_id; // among another phase's children
+          else newParent = null;                             // among top-level tasks
+          if (newParent === null && prev && next &&
+              prev.parent_id && prev.parent_id === next.parent_id)
+            newParent = next.parent_id;
+        }
+
+        const parentOf = (id) =>
+          id === draggedId ? newParent : (byId.get(id)?.parent_id || null);
+        const rootOrder = ids.filter(id => byId.get(id) && !parentOf(id));
+        for (const t of allTasks.filter(t => !t.parent_id)) {
+          if (t.id === draggedId && newParent) continue;
           if (!rootOrder.includes(t.id)) rootOrder.push(t.id);
+        }
         const childOrder = new Map();
         for (const id of ids) {
-          const t = byId.get(id);
-          if (t && t.parent_id) {
-            if (!childOrder.has(t.parent_id)) childOrder.set(t.parent_id, []);
-            childOrder.get(t.parent_id).push(id);
+          const p = parentOf(id);
+          if (p) {
+            if (!childOrder.has(p)) childOrder.set(p, []);
+            childOrder.get(p).push(id);
           }
         }
         const flat = [];
         for (const rid of rootOrder) {
           flat.push(rid);
-          const kidIds = allTasks.filter(t => t.parent_id === rid).map(t => t.id);
+          const kidIds = allTasks.filter(t => parentOf(t.id) === rid).map(t => t.id);
           const ordered = (childOrder.get(rid) || []).filter(id => kidIds.includes(id));
           for (const k of kidIds) if (!ordered.includes(k)) ordered.push(k);
           flat.push(...ordered);
         }
-        mutate('POST', '/api/tasks/reorder', { ids: flat });
+        if (dragged && newParent !== (dragged.parent_id || null)) {
+          await api('PUT', `/api/tasks/${draggedId}`, { parent_id: newParent });
+          const phase = newParent ? byId.get(newParent) : null;
+          toast(phase ? `"${dragged.name}" moved into "${phase.name}".`
+                      : `"${dragged.name}" moved out to the top level.`);
+        }
+        await mutate('POST', '/api/tasks/reorder', { ids: flat });
       },
     });
   }
