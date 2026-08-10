@@ -62,4 +62,9 @@ try {
   db.exec('UPDATE tasks SET progress = 100 WHERE done = 1');
 } catch (e) { /* column already exists */ }
 
+// migration: one-level task hierarchy (phases with subtasks)
+try {
+  db.exec('ALTER TABLE tasks ADD COLUMN parent_id INTEGER');
+} catch (e) { /* column already exists */ }
+
 module.exports = db;

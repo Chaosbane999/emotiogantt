@@ -28,7 +28,11 @@
 
   const projTasks = (pid) => S.tasks.filter(t => t.project_id === pid);
   const projDeps = (pid) => S.deps.filter(d => d.project_id === pid);
-  const cpmFor = (pid) => computeCPM(projTasks(pid), projDeps(pid));
+  // "leaf" tasks are real work; a task with children is a phase (summary row)
+  const parentIds = () => new Set(S.tasks.filter(t => t.parent_id).map(t => t.parent_id));
+  const isLeaf = (t) => !parentIds().has(t.id);
+  const projLeafTasks = (pid) => { const ps = parentIds(); return projTasks(pid).filter(t => !ps.has(t.id)); };
+  const cpmFor = (pid) => computeCPM(projLeafTasks(pid), projDeps(pid));
   const personName = (id) => (S.people.find(p => p.id === id) || {}).name || null;
   const projById = (id) => S.projects.find(p => p.id === id);
 
@@ -162,9 +166,10 @@
     const today = D.today();
     const filter = chipFilter('cp_td_excl', { includeUnassigned: true });
     const cpms = new Map(S.projects.map(p => [p.id, cpmFor(p.id)]));
+    const ps = parentIds();
     const open = S.tasks.filter(t => {
       const p = projById(t.project_id);
-      return !t.done && p && !p.archived && filter.showsTask(t);
+      return !t.done && !ps.has(t.id) && p && !p.archived && filter.showsTask(t);
     });
 
     const focus = open
@@ -232,7 +237,7 @@
     setNav('projects');
     const active = S.projects.filter(p => !p.archived);
     const cards = active.map(p => {
-      const tasks = projTasks(p.id);
+      const tasks = projLeafTasks(p.id);
       const cpm = cpmFor(p.id);
       const health = projectHealth(p, tasks, cpm);
       const doneCount = tasks.filter(t => t.done).length;
@@ -320,12 +325,39 @@
     const allTasks = projTasks(pid);
     const deps = projDeps(pid);
     const cpm = cpmFor(pid);
-    const health = projectHealth(p, allTasks, cpm);
+    const health = projectHealth(p, projLeafTasks(pid), cpm);
     const mySnaps = S.snapshots.filter(s => s.project_id === pid);
 
-    // person filter (checkbox chips — show one or many)
+    // person filter (dropdown with checkboxes — show one or many)
     const filter = chipFilter(`cp_pfchips_${pid}`, { includeUnassigned: true });
-    const tasks = allTasks.filter(filter.showsTask);
+
+    // build the display list: roots in order, children under their phase,
+    // collapsed phases hide their children but keep the summary bar
+    const collKey = `cp_coll_${pid}`;
+    const collapsed = new Set(JSON.parse(localStorage.getItem(collKey) || '[]'));
+    const kidsBy = new Map();
+    for (const t of allTasks) {
+      if (!t.parent_id) continue;
+      if (!kidsBy.has(t.parent_id)) kidsBy.set(t.parent_id, []);
+      kidsBy.get(t.parent_id).push(t);
+    }
+    const tasks = [];
+    for (const t of allTasks.filter(t => !t.parent_id)) {
+      const kids = kidsBy.get(t.id) || [];
+      if (kids.length) {
+        const visKids = kids.filter(filter.showsTask);
+        if (!visKids.length) continue;
+        tasks.push({ ...t, _kind: 'parent', _collapsed: collapsed.has(t.id),
+          _span: {
+            start: kids.reduce((a, k) => k.start < a ? k.start : a, kids[0].start),
+            end: kids.reduce((a, k) => k.end > a ? k.end : a, kids[0].end),
+          },
+          _crit: visKids.some(k => cpm.get(k.id)?.critical) });
+        if (!collapsed.has(t.id)) tasks.push(...visKids.map(k => ({ ...k, _kind: 'child' })));
+      } else if (filter.showsTask(t)) {
+        tasks.push({ ...t, _kind: 'leaf' });
+      }
+    }
 
     // baseline snapshot to compare against
     const snapKey = `cp_snap_${pid}`;
@@ -399,10 +431,40 @@
 
     Gantt.render(document.getElementById('ganttHost'), {
       tasks, deps, cpm, project: p, people: S.people, zoom: ganttZoom, baseline,
-      onTaskClick: (t) => editTask(t, p),
+      onTaskClick: (t) => editTask(allTasks.find(x => x.id === t.id) || t, p),
       onTaskChange: (t, dates) => mutate('PUT', `/api/tasks/${t.id}`, dates),
       onAddTask: () => editTask(null, p),
-      onReorder: (ids) => mutate('POST', '/api/tasks/reorder', { ids }),
+      onToggleCollapse: (t) => {
+        const c = new Set(JSON.parse(localStorage.getItem(collKey) || '[]'));
+        if (c.has(t.id)) c.delete(t.id); else c.add(t.id);
+        localStorage.setItem(collKey, JSON.stringify([...c]));
+        route();
+      },
+      onReorder: (ids) => {
+        // translate the dragged display order into a sane hierarchy order:
+        // roots keep block structure, children stay within their own phase
+        const byId = new Map(allTasks.map(t => [t.id, t]));
+        const rootOrder = ids.filter(id => byId.get(id) && !byId.get(id).parent_id);
+        for (const t of allTasks.filter(t => !t.parent_id))
+          if (!rootOrder.includes(t.id)) rootOrder.push(t.id);
+        const childOrder = new Map();
+        for (const id of ids) {
+          const t = byId.get(id);
+          if (t && t.parent_id) {
+            if (!childOrder.has(t.parent_id)) childOrder.set(t.parent_id, []);
+            childOrder.get(t.parent_id).push(id);
+          }
+        }
+        const flat = [];
+        for (const rid of rootOrder) {
+          flat.push(rid);
+          const kidIds = allTasks.filter(t => t.parent_id === rid).map(t => t.id);
+          const ordered = (childOrder.get(rid) || []).filter(id => kidIds.includes(id));
+          for (const k of kidIds) if (!ordered.includes(k)) ordered.push(k);
+          flat.push(...ordered);
+        }
+        mutate('POST', '/api/tasks/reorder', { ids: flat });
+      },
     });
   }
 
@@ -460,9 +522,9 @@
         '<div class="empty-state"><span class="big-emoji">🗺️</span>No projects yet.</div>';
       return;
     }
-    const tasksByProject = new Map(active.map(p => [p.id, projTasks(p.id)]));
+    const tasksByProject = new Map(active.map(p => [p.id, projLeafTasks(p.id)]));
     const healthByProject = new Map(active.map(p =>
-      [p.id, projectHealth(p, projTasks(p.id), cpmFor(p.id))]));
+      [p.id, projectHealth(p, projLeafTasks(p.id), cpmFor(p.id))]));
     Gantt.renderPortfolio(document.getElementById('portfolioHost'), {
       projects: active, tasksByProject, healthByProject, people: shown,
       onOpen: (p) => { location.hash = `#/project/${p.id}`; },
@@ -492,6 +554,13 @@
         <option value="">Nobody yet</option>
         ${S.people.map(pp => `<option value="${pp.id}" ${pp.id === t.person_id ? 'selected' : ''}>${esc(pp.name)}</option>`).join('')}
       </select>
+      ${S.tasks.some(x => x.parent_id === t.id) ? '' : `
+      <label>Part of (phase)</label>
+      <select id="t_parent">
+        <option value="">Not part of a phase</option>
+        ${projTasks(project.id).filter(x => !x.parent_id && x.id !== t.id && !x.milestone)
+          .map(x => `<option value="${x.id}" ${x.id === t.parent_id ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}
+      </select>`}
       <label style="display:flex;align-items:center;gap:8px;margin-top:16px">
         <input type="checkbox" id="t_milestone" style="width:auto" ${t.milestone ? 'checked' : ''}> Milestone (single date)
       </label>
@@ -550,7 +619,9 @@
       if (!name) return;
       let start = startI.value, end = msI.checked ? startI.value : endI.value;
       if (end < start) end = start;
+      const parentSel = panel.querySelector('#t_parent');
       const body = { project_id: project.id, name, start, end,
+        parent_id: parentSel ? (Number(parentSel.value) || null) : (t.parent_id || null),
         progress: msI.checked ? (doneI.checked ? 100 : 0) : Number(progI.value),
         done: doneI.checked ? 1 : 0,
         milestone: msI.checked ? 1 : 0,
@@ -587,9 +658,10 @@
     const today = D.today();
     const DAYS = 14;
     const dates = Array.from({ length: DAYS }, (_, i) => D.add(today, i));
+    const ps = parentIds();
     const openTasks = S.tasks.filter(t => {
       const p = projById(t.project_id);
-      return !t.done && p && !p.archived;
+      return !t.done && !ps.has(t.id) && p && !p.archived;
     });
 
     const rows = S.people.map(p => {
@@ -657,21 +729,23 @@
   }
 
   // ---------- project import (CSV + AI) ----------
-  const CSV_HEADER = 'Task Name,Start,End,Person,Milestone,Depends On,Notes';
+  const CSV_HEADER = 'Task Name,Start,End,Person,Milestone,Depends On,Notes,Phase';
   const CSV_TEMPLATE = `${CSV_HEADER}
-Kickoff meeting,2026-08-17,2026-08-17,Damon,yes,,Align on scope
-Research,2026-08-18,2026-08-21,Damon,no,Kickoff meeting,
-Design,2026-08-24,2026-08-28,,no,Research,Two concepts to review
-Build,2026-08-31,2026-09-11,,no,Design,
-Review & sign-off,2026-09-14,2026-09-15,Damon,no,Build,
-Launch,2026-09-16,2026-09-16,,yes,Review & sign-off,`;
+Discovery,2026-08-17,2026-08-21,,no,,Phase row — subtasks reference it in the Phase column,
+Kickoff meeting,2026-08-17,2026-08-17,Damon,yes,,Align on scope,Discovery
+Research,2026-08-18,2026-08-21,Damon,no,Kickoff meeting,,Discovery
+Design,2026-08-24,2026-08-28,,no,Research,Two concepts to review,
+Build,2026-08-31,2026-09-11,,no,Design,,
+Review & sign-off,2026-09-14,2026-09-15,Damon,no,Build,,
+Launch,2026-09-16,2026-09-16,,yes,Review & sign-off,,`;
   const GPT_PROMPT = `Create a CSV project plan I can import into my Gantt tool. Output ONLY CSV (no prose, no code fences) with this exact header row:
 ${CSV_HEADER}
 Rules:
 - Dates are YYYY-MM-DD. Milestone is yes/no; milestones are single-day (Start = End) gates like "Sign-off" or "Launch".
 - "Depends On" lists the exact Task Names (semicolon-separated) that must finish before this task can start — chain these properly for sequential work so the critical path is meaningful; leave parallel work unchained.
 - A task's Start must be at least the day after everything it depends on ends.
-- Unique task names. 5–15 rows. Person can be blank.
+- Optional phases: add a row for the phase itself (dates spanning its subtasks, no dependencies), then put that phase's exact name in the Phase column of its subtasks. Milestones can live inside phases too. One level only.
+- Unique task names. Person can be blank.
 The project is: [describe your project here]`;
 
   function parseCSV(text) {
@@ -700,7 +774,7 @@ The project is: [describe your project here]`;
     const col = (...names) => head.findIndex(h => names.some(n => h.startsWith(n)));
     const ci = { name: col('task', 'name'), start: col('start'), end: col('end', 'finish'),
       person: col('person', 'who', 'assigned'), milestone: col('milestone'),
-      deps: col('depends', 'after'), notes: col('note') };
+      deps: col('depends', 'after'), notes: col('note'), parent: col('phase', 'parent') };
     const cell = (r, i) => (i >= 0 && r[i] !== undefined ? r[i].trim() : '');
     return rows.slice(1).map(r => ({
       name: cell(r, ci.name),
@@ -710,6 +784,7 @@ The project is: [describe your project here]`;
       milestone: /^(y|yes|true|1)$/i.test(cell(r, ci.milestone)),
       depends_on: cell(r, ci.deps).split(/[;|]/).map(s => s.trim()).filter(Boolean),
       notes: cell(r, ci.notes) || null,
+      parent: cell(r, ci.parent) || null,
     })).filter(t => t.name);
   }
 
@@ -723,6 +798,8 @@ The project is: [describe your project here]`;
       for (const d of t.depends_on || [])
         if (!names.has(d.toLowerCase()))
           issues.push(`"${t.name}" depends on unknown task "${d}" — that link will be skipped`);
+      if (t.parent && !names.has(t.parent.toLowerCase()))
+        issues.push(`"${t.name}" is in unknown phase "${t.parent}" — it will sit at the top level`);
     }
     return issues;
   }
@@ -736,7 +813,7 @@ The project is: [describe your project here]`;
       ${plan.tasks.map(t => `<div class="dep-row" style="display:block">
         <strong>${esc(t.name)}</strong>${t.milestone ? ' <span class="pill neutral">milestone</span>' : ''}
         ${t.notes ? ' ✎' : ''}<br>
-        <span class="muted" style="font-size:12px">${esc(t.start)}${t.end !== t.start ? ' → ' + esc(t.end) : ''}${t.person ? ' · ' + esc(t.person) : ''}${(t.depends_on || []).length ? ' · after: ' + t.depends_on.map(esc).join(', ') : ''}</span>
+        <span class="muted" style="font-size:12px">${esc(t.start)}${t.end !== t.start ? ' → ' + esc(t.end) : ''}${t.person ? ' · ' + esc(t.person) : ''}${t.parent ? ' · in ' + esc(t.parent) : ''}${(t.depends_on || []).length ? ' · after: ' + t.depends_on.map(esc).join(', ') : ''}</span>
       </div>`).join('')}</div>`;
   }
 
@@ -770,6 +847,12 @@ The project is: [describe your project here]`;
         const predId = idByName.get(String(dep).toLowerCase());
         if (predId) await api('POST', '/api/deps',
           { project_id: pr.id, pred_id: predId, succ_id: idByName.get(t.name.toLowerCase()) });
+      }
+      if (t.parent) {
+        const parId = idByName.get(t.parent.toLowerCase());
+        const myId = idByName.get(t.name.toLowerCase());
+        if (parId && myId && parId !== myId)
+          await api('PUT', `/api/tasks/${myId}`, { parent_id: parId });
       }
     }
     await reload();

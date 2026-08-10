@@ -19,13 +19,18 @@
 
   function render(container, opts) {
     const { tasks, deps, cpm, project, people, zoom, baseline,
-      onTaskClick, onTaskChange, onAddTask, onReorder } = opts;
+      onTaskClick, onTaskChange, onAddTask, onReorder, onToggleCollapse } = opts;
     let dayW = zoom === 'day' ? 36 : 13;
     const today = D.today();
 
     // date range
     let min = today, max = today;
-    for (const t of tasks) { if (t.start < min) min = t.start; if (t.end > max) max = t.end; }
+    for (const t of tasks) {
+      const s = t._kind === 'parent' ? t._span.start : t.start;
+      const e = t._kind === 'parent' ? t._span.end : t.end;
+      if (s < min) min = s;
+      if (e > max) max = e;
+    }
     if (baseline) for (const b of baseline.values()) {
       if (b.start < min) min = b.start;
       if (b.end > max) max = b.end;
@@ -54,15 +59,27 @@
     let rowDrag = null;
     tasks.forEach((t, idx) => {
       const row = document.createElement('div');
-      row.className = 'gn-row' + (t.done ? ' done' : '');
-      const c = cpm.get(t.id);
+      row.className = 'gn-row' + (t.done ? ' done' : '') +
+        (t._kind === 'parent' ? ' parent' : '') + (t._kind === 'child' ? ' child' : '');
+      const crit = t._kind === 'parent' ? t._crit : cpm.get(t.id)?.critical;
       const person = t.person_id ? peopleById.get(t.person_id) : null;
       row.innerHTML =
         '<span class="grab" title="Drag to reorder">⋮⋮</span>' +
-        (c && c.critical ? '<span class="dot" style="background:var(--critical)" title="On the critical path"></span>' : '<span class="dot" style="background:transparent"></span>') +
+        (t._kind === 'parent'
+          ? `<button class="caret" title="${t._collapsed ? 'Show' : 'Hide'} subtasks">${t._collapsed ? '▸' : '▾'}</button>`
+          : '') +
+        (crit ? '<span class="dot" style="background:var(--critical)" title="On the critical path"></span>' : '<span class="dot" style="background:transparent"></span>') +
         `<span class="nm">${escapeHtml(t.name)}</span>` +
         (person ? `<span class="who" style="background:${person.color}" title="${escapeHtml(person.name)}">${initials(person.name)}</span>` : '');
       rowEls.push(row);
+      const caret = row.querySelector('.caret');
+      if (caret) {
+        caret.addEventListener('pointerdown', (e) => e.stopPropagation());
+        caret.addEventListener('click', (e) => {
+          e.stopPropagation();
+          onToggleCollapse && onToggleCollapse(t);
+        });
+      }
 
       row.addEventListener('pointerdown', (e) => {
         e.preventDefault();
@@ -214,6 +231,22 @@
     tasks.forEach((t, i) => {
       const c = cpm.get(t.id) || {};
       const y = HEAD_H + i * ROW_H + BAR_PAD;
+
+      // phase summary bar: thin bar spanning its subtasks, with end ticks
+      if (t._kind === 'parent') {
+        const s = t._span.start, e = t._span.end;
+        const bx = x(s), bw = (D.diff(s, e) + 1) * dayW;
+        const yy = y + 3;
+        const g0 = el('g', { style: 'cursor:pointer' }, svg);
+        el('rect', { x: bx, y: yy, width: bw, height: 8, rx: 2,
+          fill: project.color, opacity: .85 }, g0);
+        el('path', { d: `M ${bx} ${yy + 7} l 6 7 l 0 -7 z`, fill: project.color, opacity: .85 }, g0);
+        el('path', { d: `M ${bx + bw} ${yy + 7} l -6 7 l 0 -7 z`, fill: project.color, opacity: .85 }, g0);
+        el('text', { x: bx + bw + 8, y: yy + 9, 'font-size': 12, 'font-weight': 650,
+          fill: css('--ink-soft') }, g0).textContent = t.name;
+        g0.addEventListener('click', () => onTaskClick(t));
+        return;
+      }
 
       // baseline ghost: where this task sat when the snapshot was taken
       const b = baseline && baseline.get(t.id);

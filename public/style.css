@@ -193,6 +193,13 @@ label { display: block; font-size: 13px; font-weight: 550; color: var(--ink-soft
   z-index: 6; box-shadow: var(--shadow); background: var(--surface2);
   transition: none; cursor: grabbing;
 }
+.gn-row.parent .nm { font-weight: 650; }
+.gn-row.child { padding-left: 26px; }
+.gn-row .caret {
+  background: none; border: none; color: var(--ink-soft); cursor: pointer;
+  font-size: 10px; width: 16px; padding: 0; flex-shrink: 0; font-family: inherit;
+}
+.gn-row .caret:hover { color: var(--ink); }
 .gn-row .nm { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .gn-row.done .nm { color: var(--ink-soft); text-decoration: line-through; }
 .who {

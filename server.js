@@ -119,11 +119,12 @@ app.post('/api/tasks', (req, res) => {
   const t = req.body;
   const progress = t.done ? 100 : Math.max(0, Math.min(100, Number(t.progress) || 0));
   const r = db.prepare(
-    `INSERT INTO tasks (project_id, name, start, end, done, milestone, person_id, notes, progress, sort_order)
-     VALUES (?,?,?,?,?,?,?,?,?,
+    `INSERT INTO tasks (project_id, name, start, end, done, milestone, person_id, notes, progress, parent_id, sort_order)
+     VALUES (?,?,?,?,?,?,?,?,?,?,
        COALESCE((SELECT MAX(sort_order)+1 FROM tasks WHERE project_id=?), 0))`
   ).run(t.project_id, t.name, t.start, t.end, progress >= 100 ? 1 : (t.done ? 1 : 0),
-        t.milestone ? 1 : 0, t.person_id || null, t.notes || '', progress, t.project_id);
+        t.milestone ? 1 : 0, t.person_id || null, t.notes || '', progress,
+        t.parent_id || null, t.project_id);
   ok(res, { id: r.lastInsertRowid });
 });
 app.put('/api/tasks/:id', (req, res) => {
@@ -138,9 +139,10 @@ app.put('/api/tasks/:id', (req, res) => {
     m.progress = req.body.done ? 100 : (t.progress >= 100 ? 0 : t.progress);
   }
   db.prepare(
-    'UPDATE tasks SET name=?, start=?, end=?, done=?, milestone=?, person_id=?, notes=?, progress=?, sort_order=? WHERE id=?'
+    'UPDATE tasks SET name=?, start=?, end=?, done=?, milestone=?, person_id=?, notes=?, progress=?, parent_id=?, sort_order=? WHERE id=?'
   ).run(m.name, m.start, m.end, m.done ? 1 : 0, m.milestone ? 1 : 0,
-        m.person_id || null, m.notes, m.progress || 0, m.sort_order, t.id);
+        m.person_id || null, m.notes, m.progress || 0,
+        m.parent_id === t.id ? null : (m.parent_id || null), m.sort_order, t.id);
   ok(res);
 });
 app.post('/api/tasks/reorder', (req, res) => {
@@ -150,6 +152,8 @@ app.post('/api/tasks/reorder', (req, res) => {
   ok(res);
 });
 app.delete('/api/tasks/:id', (req, res) => {
+  // deleting a phase promotes its subtasks rather than orphaning them
+  db.prepare('UPDATE tasks SET parent_id=NULL WHERE parent_id=?').run(req.params.id);
   db.prepare('DELETE FROM tasks WHERE id=?').run(req.params.id);
   ok(res);
 });
@@ -180,13 +184,14 @@ app.post('/api/ai-plan', async (req, res) => {
 {"name": "Project name", "due_date": "YYYY-MM-DD or null", "tasks": [
   {"name": "...", "start": "YYYY-MM-DD", "end": "YYYY-MM-DD", "milestone": false,
    "person": "Name or null", "depends_on": ["exact task names that must finish first"],
-   "notes": "short note or null"}]}
+   "notes": "short note or null", "parent": "phase task name or null"}]}
 Rules:
 - Today is ${today}. Start the plan on or after today unless told otherwise.
 - 5–15 tasks. Realistic durations. Milestones are single-day (start = end) gates like "Sign-off" or "Launch".
 - Chain dependencies wherever work genuinely cannot start before another finishes — this is what drives the critical path. Parallel tracks should stay parallel.
 - A task's start must be at least the day after every task it depends on ends.
 - Only assign a person if the user names people; otherwise use null.
+- For larger plans, group work into phases: add the phase itself as a task (dates spanning its subtasks, no depends_on, parent null) and set each subtask's "parent" to that phase's exact name. One level only. Milestones may sit inside phases.
 - Task names must be unique.`;
   const messages = [{ role: 'system', content: sys }];
   if (plan && amendment) {
