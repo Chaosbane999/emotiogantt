@@ -975,6 +975,17 @@ The project is: [describe your project here]`;
     });
   }
 
+  // dig the human-readable message out of nested error JSON
+  function friendlyApiError(e) {
+    let msg = e.message || String(e);
+    try {
+      const j = JSON.parse(msg);
+      msg = j.detail || j.error || msg;
+      try { msg = JSON.parse(msg).error?.message || msg; } catch {}
+    } catch {}
+    return String(msg).slice(0, 300);
+  }
+
   function aiDialog() {
     const color = PROJECT_COLORS[S.projects.length % PROJECT_COLORS.length];
     api('GET', '/api/settings').then(({ openai }) => openai ? promptForm() : keyForm());
@@ -986,16 +997,30 @@ The project is: [describe your project here]`;
           it's stored on your server (never shown again here). Then describe any project and
           get a draft plan to review.</p>
         <label>OpenAI API key</label><input id="k_key" type="password" placeholder="sk-…">
+        <p class="muted" style="font-size:12px">Keys are shown in full only once, when created at
+          platform.openai.com/api-keys — the dashboard list is masked, so paste from creation time.
+          The key is checked with OpenAI before it's saved.</p>
         <div class="panel-actions">
           <button class="btn primary grow" id="k_save">Save key</button>
           <button class="btn" id="k_cancel">Cancel</button>
-        </div>`);
+        </div>
+        <p id="k_err" class="err hidden"></p>`);
       panel.querySelector('#k_cancel').addEventListener('click', closePanel);
       panel.querySelector('#k_save').addEventListener('click', async () => {
         const v = panel.querySelector('#k_key').value.trim();
         if (!v) return;
-        await api('POST', '/api/settings', { openai_key: v });
-        promptForm();
+        const btn = panel.querySelector('#k_save');
+        btn.disabled = true; btn.textContent = 'Checking with OpenAI…';
+        try {
+          await api('POST', '/api/settings', { openai_key: v });
+          toast('Key verified and saved.');
+          promptForm();
+        } catch (e) {
+          const err = panel.querySelector('#k_err');
+          err.textContent = friendlyApiError(e);
+          err.classList.remove('hidden');
+          btn.disabled = false; btn.textContent = 'Save key';
+        }
       });
     }
 
@@ -1030,7 +1055,7 @@ The project is: [describe your project here]`;
       } catch (e) {
         const err = panel.querySelector('#a_err');
         if (err) {
-          err.textContent = 'The AI call failed — check the key and try again. ' + e.message.slice(0, 160);
+          err.textContent = 'The AI call failed: ' + friendlyApiError(e);
           err.classList.remove('hidden');
         }
         if (go) { go.disabled = false; go.textContent = 'Draft the plan'; }

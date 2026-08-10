@@ -165,12 +165,27 @@ function getSetting(key) {
 }
 app.get('/api/settings', (req, res) =>
   ok(res, { openai: !!(getSetting('openai_key') || process.env.OPENAI_API_KEY) }));
-app.post('/api/settings', (req, res) => {
+app.post('/api/settings', async (req, res) => {
   if ('openai_key' in req.body) {
     const v = (req.body.openai_key || '').trim();
-    if (v) db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?,?)')
-      .run('openai_key', v);
-    else db.prepare('DELETE FROM settings WHERE key=?').run('openai_key');
+    if (v) {
+      // verify with OpenAI right away so a bad paste fails at save time
+      try {
+        const r = await fetch('https://api.openai.com/v1/models', {
+          headers: { Authorization: `Bearer ${v}` },
+        });
+        if (!r.ok) {
+          return res.status(400).json({ error: 'invalid_key',
+            detail: `OpenAI rejected the key (HTTP ${r.status}). Paste the full key exactly as shown when it was created — keys in the dashboard list are masked and can't be copied from there.` });
+        }
+      } catch (e) {
+        return res.status(502).json({ error: 'openai_unreachable', detail: String(e.message) });
+      }
+      db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?,?)')
+        .run('openai_key', v);
+    } else {
+      db.prepare('DELETE FROM settings WHERE key=?').run('openai_key');
+    }
   }
   ok(res);
 });
