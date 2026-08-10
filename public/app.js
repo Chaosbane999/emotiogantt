@@ -88,35 +88,66 @@
     });
   }
 
-  // shared person-filter chips; stores EXCLUDED ids so new people default to shown
+  // shared person filter: tidy dropdown with checkboxes inside (pick one or many).
+  // Stores EXCLUDED ids so newly added people default to shown.
+  let pdropOpenKey = null; // menu stays open across re-renders while ticking
+  document.addEventListener('click', (e) => {
+    if (!e.target.isConnected) return;
+    if (![...document.querySelectorAll('.pdrop')].some(r => r.contains(e.target))) {
+      document.querySelectorAll('.pdrop-menu').forEach(m => m.classList.add('hidden'));
+      pdropOpenKey = null;
+    }
+  });
   function chipFilter(key, { includeUnassigned = false } = {}) {
     const excluded = new Set(JSON.parse(localStorage.getItem(key) || '[]'));
-    const chip = (val, dotColor, label) => `
-      <button class="chip ${excluded.has(val) ? '' : 'on'}" data-chip="${val}">
-        <span class="dot" style="background:${dotColor}"></span>${label}
-        <span class="tick">${excluded.has(val) ? '' : '✓'}</span>
-      </button>`;
-    const html = S.people.length ? `<div class="chip-row">
-        <span class="muted" style="font-size:13px">Show:</span>
-        <button class="chip ${excluded.size === 0 ? 'on' : ''}" data-chip="all">Everyone</button>
-        ${S.people.map(pp => chip(pp.id, pp.color, esc(pp.name))).join('')}
-        ${includeUnassigned ? chip('u', 'var(--ink-soft)', 'Unassigned') : ''}
+    const shown = S.people.filter(pp => !excluded.has(pp.id));
+    let label = 'Everyone';
+    if (excluded.size) {
+      const names = shown.map(p => p.name);
+      if (includeUnassigned && !excluded.has('u')) names.push('Unassigned');
+      label = !names.length ? 'Nobody' : names.length <= 2 ? names.join(' + ') : `${names.length} selected`;
+    }
+    const item = (val, dotColor, text, bold) => `
+      <label class="pdrop-item">
+        <input type="checkbox" data-pd="${val}" ${
+          val === 'all' ? (excluded.size === 0 ? 'checked' : '') : (excluded.has(val) ? '' : 'checked')}>
+        ${dotColor ? `<span class="dot" style="background:${dotColor}"></span>` : ''}
+        ${bold ? `<strong>${text}</strong>` : text}
+      </label>`;
+    const html = S.people.length ? `
+      <div class="pdrop" data-pdrop="${key}">
+        <button class="btn small pdrop-btn" title="Choose whose work to show">👥 ${esc(label)} ▾</button>
+        <div class="pdrop-menu ${pdropOpenKey === key ? '' : 'hidden'}">
+          ${item('all', '', 'Everyone', true)}
+          ${S.people.map(pp => item(pp.id, pp.color, esc(pp.name))).join('')}
+          ${includeUnassigned ? item('u', 'var(--ink-soft)', 'Unassigned') : ''}
+        </div>
       </div>` : '';
     const wire = () => {
-      view.querySelectorAll('[data-chip]').forEach(b => b.addEventListener('click', () => {
-        if (b.dataset.chip === 'all') {
+      const root = view.querySelector(`[data-pdrop="${CSS.escape(key)}"]`);
+      if (!root) return;
+      const menu = root.querySelector('.pdrop-menu');
+      root.querySelector('.pdrop-btn').addEventListener('click', (e) => {
+        e.stopPropagation();
+        const opening = menu.classList.contains('hidden');
+        menu.classList.toggle('hidden', !opening);
+        pdropOpenKey = opening ? key : null;
+      });
+      root.querySelectorAll('[data-pd]').forEach(cb => cb.addEventListener('change', () => {
+        if (cb.dataset.pd === 'all') {
           localStorage.removeItem(key);
         } else {
-          const id = b.dataset.chip === 'u' ? 'u' : Number(b.dataset.chip);
+          const id = cb.dataset.pd === 'u' ? 'u' : Number(cb.dataset.pd);
           if (excluded.has(id)) excluded.delete(id); else excluded.add(id);
           localStorage.setItem(key, JSON.stringify([...excluded]));
         }
+        pdropOpenKey = key;
         route();
       }));
     };
     const showsTask = (t) =>
       t.person_id ? !excluded.has(t.person_id) : !excluded.has('u');
-    return { excluded, html, wire, showsTask };
+    return { excluded, html, wire, showsTask, shown };
   }
 
   // ---------- views ----------
@@ -320,6 +351,7 @@
         </h1>
         <span class="pill ${health}">${HEALTH_LABEL[health]}</span>
         <div class="spacer"></div>
+        ${filter.html}
         <select id="snapSel" class="toolbar-select" title="Compare against a saved plan">
           <option value="0">No comparison</option>
           ${mySnaps.map(s =>
@@ -332,7 +364,6 @@
         </div>
         <button class="btn small" id="editProj">Settings</button>
       </div>
-      ${filter.html}
       <div id="ganttHost"></div>
       <p class="muted" style="font-size:13px;margin-top:14px">
         <span style="color:var(--critical)">■</span> Critical path — a delay here delays the whole project.
@@ -413,7 +444,7 @@
     setNav('timeline');
     const active = S.projects.filter(p => !p.archived);
     const filter = chipFilter('cp_tl_excl');
-    const shown = S.people.filter(pp => !filter.excluded.has(pp.id));
+    const shown = filter.shown;
 
     view.innerHTML = `
       <h1>Timeline</h1>
