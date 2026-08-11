@@ -202,12 +202,14 @@ app.post('/api/ai-plan', async (req, res) => {
    "notes": "short note or null", "parent": "phase task name or null"}]}
 Rules:
 - Today is ${today}. Start the plan on or after today unless told otherwise.
-- 5–15 tasks. Realistic durations. Milestones are single-day (start = end) gates like "Sign-off" or "Launch".
+- If the user supplies their own task list, table, or schedule, reproduce it FAITHFULLY and COMPLETELY: every single task and phase, exact dates, no matter how many rows. Never summarise, merge, or drop tasks. Dates without a year belong to the schedule's stated timeframe.
+- Only when the user gives a loose description (no task list) should you invent the plan yourself: 5–15 tasks with realistic durations.
+- Milestones are single-day (start = end) gates like "Sign-off" or "Launch".
 - Chain dependencies wherever work genuinely cannot start before another finishes — this is what drives the critical path. Parallel tracks should stay parallel.
-- A task's start must be at least the day after every task it depends on ends.
-- Only assign a person if the user names people; otherwise use null.
-- For larger plans, group work into phases: add the phase itself as a task (dates spanning its subtasks, no depends_on, parent null) and set each subtask's "parent" to that phase's exact name. One level only. Milestones may sit inside phases.
-- Task names must be unique.`;
+- Owners like "Emotio / Campions" mean shared work — assign the first-named person.
+- Group work into phases: add the phase itself as a task (dates spanning its subtasks, no depends_on, parent null) and set each subtask's "parent" to that phase's exact name. One level only. Milestones may sit inside phases.
+- Deliverable columns become the task's "notes".
+- Task names must be unique (prefix with the phase name if needed to disambiguate).`;
   const messages = [{ role: 'system', content: sys }];
   if (plan && amendment) {
     messages.push({ role: 'user', content:
@@ -215,11 +217,15 @@ Rules:
   } else {
     messages.push({ role: 'user', content: String(prompt || '') });
   }
+  // big briefs (detailed schedules) get the stronger model and full output headroom
+  const big = String(prompt || '').length > 1200 ||
+    (plan && Array.isArray(plan.tasks) && plan.tasks.length > 20);
   try {
     const r = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: 'gpt-4o-mini',
+      body: JSON.stringify({ model: big ? 'gpt-4o' : 'gpt-4o-mini',
+        max_tokens: 16000,
         response_format: { type: 'json_object' }, messages }),
     });
     if (!r.ok) {
@@ -227,6 +233,10 @@ Rules:
       return res.status(502).json({ error: 'openai_error', detail });
     }
     const j = await r.json();
+    if (j.choices[0].finish_reason === 'length') {
+      return res.status(502).json({ error: 'plan_too_long',
+        detail: 'The plan was too large to generate in one go — try splitting the brief into two projects, or import it as CSV instead.' });
+    }
     const parsed = JSON.parse(j.choices[0].message.content);
     if (!parsed.name || !Array.isArray(parsed.tasks)) throw new Error('bad shape');
     ok(res, { plan: parsed });

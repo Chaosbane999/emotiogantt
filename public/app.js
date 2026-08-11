@@ -890,7 +890,10 @@ The project is: [describe your project here]`;
     return issues;
   }
 
+  const cleanDate = (s) => /^\d{4}-\d{2}-\d{2}$/.test(s || '') ? s : null;
+
   function planPreviewHTML(plan) {
+    plan.due_date = cleanDate(plan.due_date);
     const issues = planIssues(plan);
     return `
       <h3 style="margin-top:22px;font-size:15px">${esc(plan.name)} — ${plan.tasks.length} tasks${plan.due_date ? ` · due ${D.human(plan.due_date)}` : ''}</h3>
@@ -916,7 +919,7 @@ The project is: [describe your project here]`;
       }
     }
     const pr = await api('POST', '/api/projects',
-      { name: plan.name, color, due_date: plan.due_date || null, notes: '' });
+      { name: plan.name, color, due_date: cleanDate(plan.due_date), notes: '' });
     const idByName = new Map();
     for (const t of tasks) {
       let end = t.milestone ? t.start : t.end;
