@@ -134,11 +134,21 @@
       const root = view.querySelector(`[data-pdrop="${CSS.escape(key)}"]`);
       if (!root) return;
       const menu = root.querySelector('.pdrop-menu');
+      // keep the menu on screen: flip to left-aligned when the button sits near
+      // the left edge (default CSS right-aligns it)
+      const place = () => {
+        menu.style.left = ''; menu.style.right = '';
+        const r = menu.getBoundingClientRect();
+        if (r.left < 8) { menu.style.left = '0'; menu.style.right = 'auto'; }
+        else if (r.right > innerWidth - 8) { menu.style.left = 'auto'; menu.style.right = '0'; }
+      };
+      if (!menu.classList.contains('hidden')) place();
       root.querySelector('.pdrop-btn').addEventListener('click', (e) => {
         e.stopPropagation();
         const opening = menu.classList.contains('hidden');
         menu.classList.toggle('hidden', !opening);
         pdropOpenKey = opening ? key : null;
+        if (opening) place();
       });
       root.querySelectorAll('[data-pd]').forEach(cb => cb.addEventListener('change', () => {
         if (cb.dataset.pd === 'all') {
