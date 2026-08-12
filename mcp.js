@@ -254,9 +254,16 @@ const impl = {
 
 function handle(req, res) {
   if (!TOKEN) return res.status(404).end();
+  const oauth = require('./oauth'); // late require avoids a load cycle
   const auth = req.headers.authorization || '';
-  if (auth !== `Bearer ${TOKEN}` && (req.query.token || '') !== TOKEN)
+  const bearer = auth.startsWith('Bearer ') ? auth.slice(7) : '';
+  const authed = (bearer && (bearer === TOKEN || oauth.isValidToken(bearer))) ||
+    (req.query.token || '') === TOKEN;
+  if (!authed) {
+    res.set('WWW-Authenticate',
+      `Bearer resource_metadata="${oauth.PUBLIC_URL}/.well-known/oauth-protected-resource"`);
     return res.status(401).json({ error: 'unauthorized' });
+  }
   const m = req.body || {};
   if (m.id === undefined || m.id === null) return res.status(202).end(); // notification
   const reply = (result) => res.json({ jsonrpc: '2.0', id: m.id, result });

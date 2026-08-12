@@ -3,6 +3,7 @@ const crypto = require('crypto');
 const path = require('path');
 const db = require('./db');
 const mcp = require('./mcp');
+const oauth = require('./oauth');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -54,6 +55,18 @@ app.post('/login', (req, res) => {
 // MCP endpoint (token-authenticated, independent of the passcode gate)
 app.post('/mcp', mcp.handle);
 app.get('/mcp', (req, res) => res.status(405).end());
+
+// OAuth 2.1 for MCP clients that require it (ChatGPT etc.)
+app.use(express.urlencoded({ extended: false }));
+app.get('/.well-known/oauth-authorization-server', oauth.asMetadata);
+app.get('/.well-known/oauth-authorization-server/mcp', oauth.asMetadata);
+app.get('/.well-known/openid-configuration', oauth.asMetadata);
+app.get('/.well-known/oauth-protected-resource', oauth.prMetadata);
+app.get('/.well-known/oauth-protected-resource/mcp', oauth.prMetadata);
+app.post('/oauth/register', oauth.register);
+app.get('/oauth/authorize', oauth.authorizeForm);
+app.post('/oauth/authorize', oauth.authorizeSubmit);
+app.post('/oauth/token', oauth.token);
 
 app.use((req, res, next) => {
   if (!authToken) return next();
