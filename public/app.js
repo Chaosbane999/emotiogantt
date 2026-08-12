@@ -476,6 +476,19 @@
       onTaskClick: (t) => editTask(allTasks.find(x => x.id === t.id) || t, p),
       onTaskChange: (t, dates) => mutate('PUT', `/api/tasks/${t.id}`, dates),
       onAddTask: () => editTask(null, p),
+      onPhaseMove: async (t, days) => {
+        const kids = allTasks.filter(x => x.parent_id === t.id);
+        for (const k of kids) {
+          await api('PUT', `/api/tasks/${k.id}`,
+            { start: D.add(k.start, days), end: D.add(k.end, days) });
+        }
+        await api('PUT', `/api/tasks/${t.id}`,
+          { start: D.add(t.start, days), end: D.add(t.end, days) });
+        await reload();
+        route();
+        const n = Math.abs(days);
+        toast(`"${t.name}" and its ${kids.length} subtasks moved ${n} day${n === 1 ? '' : 's'} ${days > 0 ? 'later' : 'earlier'}.`);
+      },
       onToggleCollapse: (t) => {
         const c = new Set(JSON.parse(localStorage.getItem(collKey) || '[]'));
         if (c.has(t.id)) c.delete(t.id); else c.add(t.id);

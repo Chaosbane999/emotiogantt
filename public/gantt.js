@@ -54,7 +54,8 @@
 
   function render(container, opts) {
     const { tasks, deps, cpm, project, people, zoom, baseline,
-      onTaskClick, onTaskChange, onAddTask, onReorder, onToggleCollapse } = opts;
+      onTaskClick, onTaskChange, onAddTask, onReorder, onToggleCollapse,
+      onPhaseMove } = opts;
     let dayW = zoom === 'day' ? 36 : 13;
     const today = D.today();
 
@@ -308,8 +309,9 @@
         el('path', { d: `M ${bx} ${yy + 7} l 6 7 l 0 -7 z`, fill: project.color, opacity: .85 }, g0);
         el('path', { d: `M ${bx + bw} ${yy + 7} l -6 7 l 0 -7 z`, fill: project.color, opacity: .85 }, g0);
         el('text', { x: bx + bw + 8, y: yy + 9, 'font-size': 12, 'font-weight': 650,
-          fill: css('--ink-soft') }, g0).textContent = t.name;
-        g0.addEventListener('click', () => onTaskClick(t));
+          fill: css('--ink-soft'), style: 'pointer-events:none' }, g0).textContent = t.name;
+        // drag the phase bar to move the whole phase — subtasks come along
+        attachDrag(g0, t, 'move', { g: g0 });
         return;
       }
 
@@ -440,6 +442,10 @@
           ctx.g.style.transform = '';
           preview(0);
           if (!moved && mode === 'move') onTaskClick(task);
+          return;
+        }
+        if (task._kind === 'parent') {
+          onPhaseMove && onPhaseMove(task, days);
           return;
         }
         let { start, end } = task;
