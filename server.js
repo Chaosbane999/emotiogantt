@@ -2,6 +2,7 @@ const express = require('express');
 const crypto = require('crypto');
 const path = require('path');
 const db = require('./db');
+const mcp = require('./mcp');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -49,6 +50,10 @@ app.post('/login', (req, res) => {
   };
   setTimeout(finish, Math.min(5000, Math.max(0, fails - 4) * 1000));
 });
+
+// MCP endpoint (token-authenticated, independent of the passcode gate)
+app.post('/mcp', mcp.handle);
+app.get('/mcp', (req, res) => res.status(405).end());
 
 app.use((req, res, next) => {
   if (!authToken) return next();

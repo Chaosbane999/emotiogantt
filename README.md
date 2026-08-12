@@ -30,3 +30,6 @@ docker run -d -p 3000:3000 -v clearpath-data:/data \
 - `ALLOWED_IPS` (optional) — comma-separated IPs that skip the passcode entirely
   (e.g. office or VPN egress IPs). Everyone else still gets the passcode page.
 - `DATA_DIR` — where the SQLite database lives (defaults to `./data`, `/data` in Docker).
+- `MCP_TOKEN` (optional) — enables the MCP endpoint at `/mcp` (Streamable HTTP) so AI
+  assistants can read and write projects. Auth: `Authorization: Bearer <token>` header
+  or `?token=<token>` query. Endpoint is disabled entirely when unset.
