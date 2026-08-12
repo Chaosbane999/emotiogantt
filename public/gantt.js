@@ -55,7 +55,7 @@
   function render(container, opts) {
     const { tasks, deps, cpm, project, people, zoom, baseline,
       onTaskClick, onTaskChange, onAddTask, onReorder, onToggleCollapse,
-      onPhaseMove } = opts;
+      onPhaseMove, onAddDep } = opts;
     let dayW = zoom === 'day' ? 36 : 13;
     const today = D.today();
 
@@ -351,9 +351,15 @@
           fill: t.done ? css('--ink-soft') : (c.critical ? css('--critical') : project.color),
           opacity: t.done ? .5 : 1,
         }, g);
-        el('text', { x: cx + r + 6, y: cy + 4, 'font-size': 12, fill: css('--ink-soft') }, g)
+        el('text', { x: cx + r + 6, y: cy + 4, 'font-size': 12, fill: css('--ink-soft'),
+          style: 'pointer-events:none' }, g)
           .textContent = t.name + (hasNote ? ' ✎' : '');
         attachDrag(g, t, 'move', { g });
+        addConnectors(g, t, cx - r, cx + r, cy);
+        g.addEventListener('pointerenter', () =>
+          g.querySelectorAll('.connector').forEach(c => c.setAttribute('opacity', 1)));
+        g.addEventListener('pointerleave', () =>
+          g.querySelectorAll('.connector').forEach(c => c.setAttribute('opacity', 0)));
       } else {
         const cs = weekMode && t.start < min ? min : t.start;
         const ce = weekMode && t.end > max ? max : t.end;
@@ -394,12 +400,69 @@
             fill: 'transparent', style: 'cursor:ew-resize' }, g);
           attachDrag(h, t, side, ctx);
         }
-        g.addEventListener('pointerenter', () =>
-          g.querySelectorAll('.grip').forEach(r => r.setAttribute('opacity', .85)));
-        g.addEventListener('pointerleave', () =>
-          g.querySelectorAll('.grip').forEach(r => r.setAttribute('opacity', 0)));
+        addConnectors(g, t, bx, bx + bw, y + BAR_H / 2);
+        g.addEventListener('pointerenter', () => {
+          g.querySelectorAll('.grip').forEach(r => r.setAttribute('opacity', .85));
+          g.querySelectorAll('.connector').forEach(c => c.setAttribute('opacity', 1));
+        });
+        g.addEventListener('pointerleave', () => {
+          g.querySelectorAll('.grip').forEach(r => r.setAttribute('opacity', 0));
+          g.querySelectorAll('.connector').forEach(c => c.setAttribute('opacity', 0));
+        });
       }
     });
+
+    // ---- dependency linking: drag a connector dot onto another bar ----
+    let linkDrag = null;
+    const svgPoint = (e) => {
+      const r = svg.getBoundingClientRect();
+      return { x: e.clientX - r.left, y: e.clientY - r.top };
+    };
+    function attachLink(handle, task, side, origin) {
+      handle.addEventListener('pointerdown', (e) => {
+        e.preventDefault(); e.stopPropagation();
+        linkDrag = { task, side, origin, target: null,
+          path: el('path', { fill: 'none', stroke: css('--accent'), 'stroke-width': 2,
+            'stroke-dasharray': '5 4', 'pointer-events': 'none' }, svg),
+          hi: el('rect', { x: 0, y: 0, width, height: ROW_H, fill: css('--accent'),
+            opacity: 0, 'pointer-events': 'none' }, svg) };
+        handle.setPointerCapture(e.pointerId);
+      });
+      handle.addEventListener('pointermove', (e) => {
+        if (!linkDrag || linkDrag.task !== task || linkDrag.side !== side) return;
+        const p = svgPoint(e);
+        linkDrag.path.setAttribute('d', `M ${origin.x} ${origin.y} L ${p.x} ${p.y}`);
+        const row = Math.floor((p.y - HEAD_H) / ROW_H);
+        const t2 = row >= 0 && row < tasks.length ? tasks[row] : null;
+        const valid = t2 && t2.id !== task.id && t2._kind !== 'parent';
+        linkDrag.target = valid ? t2 : null;
+        linkDrag.hi.setAttribute('y', HEAD_H + row * ROW_H);
+        linkDrag.hi.setAttribute('opacity', valid ? .12 : 0);
+      });
+      const finish = () => {
+        if (!linkDrag || linkDrag.task !== task || linkDrag.side !== side) return;
+        const { target } = linkDrag;
+        linkDrag.path.remove(); linkDrag.hi.remove();
+        linkDrag = null;
+        if (target && onAddDep) {
+          if (side === 'end') onAddDep(task, target);   // target depends on me
+          else onAddDep(target, task);                  // I depend on target
+        }
+      };
+      handle.addEventListener('pointerup', finish);
+      handle.addEventListener('pointercancel', finish);
+    }
+    function addConnectors(g, task, x1, x2, cy) {
+      for (const [side, cx] of [['start', x1 - 9], ['end', x2 + 9]]) {
+        const c = el('circle', { class: 'connector', cx, cy, r: 5.5,
+          fill: css('--surface'), stroke: css('--accent'), 'stroke-width': 2,
+          opacity: 0, style: 'cursor:crosshair' }, g);
+        el('title', {}, c).textContent = side === 'end'
+          ? 'Drag onto another bar: it will depend on this task'
+          : 'Drag onto another bar: this task will depend on it';
+        attachLink(c, task, side, { x: cx, y: cy });
+      }
+    }
 
     // ---- drag logic ----
     let drag = null;

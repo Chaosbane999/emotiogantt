@@ -476,6 +476,17 @@
       onTaskClick: (t) => editTask(allTasks.find(x => x.id === t.id) || t, p),
       onTaskChange: (t, dates) => mutate('PUT', `/api/tasks/${t.id}`, dates),
       onAddTask: () => editTask(null, p),
+      onAddDep: async (pred, succ) => {
+        try {
+          await api('POST', '/api/deps',
+            { project_id: pid, pred_id: pred.id, succ_id: succ.id });
+          await reload();
+          route();
+          toast(`"${succ.name}" now depends on "${pred.name}".`);
+        } catch (e) {
+          toast('Those two are already linked.');
+        }
+      },
       onPhaseMove: async (t, days) => {
         const kids = allTasks.filter(x => x.parent_id === t.id);
         for (const k of kids) {
