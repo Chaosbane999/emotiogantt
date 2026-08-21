@@ -48,6 +48,13 @@ Emotio Team gives a Salient (or any WordPress) site a complete, beautifully desi
 * Lazy-loaded, responsive images; assets only load on pages that use the layouts.
 * Fully translation-ready and keyboard/screen-reader accessible.
 
+**Emotio license module**
+
+* Activate your Emotio license key under **Team → License** (or define `ETM_LICENSE_KEY` in `wp-config.php` for agency deployments — the field then locks).
+* Daily automatic re-validation, with a 14-day grace period if the licensing server is unreachable — the plugin never stops working on a client site because of a licensing hiccup.
+* Masked key display, per-site activate/deactivate, status, renewal date and last-checked info.
+* Developers can gate premium behaviour on the `etm_is_licensed` filter, and point at a staging server with the `etm_license_api_url` filter or `ETM_LICENSE_API` constant.
+
 == Installation ==
 
 1. Upload the `emotio-team` folder to `/wp-content/plugins/`, or install the zip via Plugins → Add New → Upload.
@@ -72,6 +79,10 @@ Yes — Team → Settings → untick "Individual profile pages". Cards then open
 = Can my theme override the templates? =
 
 Copy `templates/single-team_member.php` or `templates/archive-team_member.php` into a `emotio-team/` folder inside your theme.
+
+= What happens if my license expires? =
+
+The plugin keeps working. An expired or missing license only surfaces a notice on the Team admin screens and switches the `etm_is_licensed` filter to false (updates and support are tied to an active license).
 
 == Changelog ==
 

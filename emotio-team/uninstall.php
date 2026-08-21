@@ -13,3 +13,9 @@ if ( ! defined( 'WP_UNINSTALL_PLUGIN' ) ) {
 
 delete_option( 'etm_settings' );
 delete_option( 'etm_flush_needed' );
+delete_option( 'etm_license' );
+
+$timestamp = wp_next_scheduled( 'etm_license_check' );
+if ( $timestamp ) {
+	wp_unschedule_event( $timestamp, 'etm_license_check' );
+}

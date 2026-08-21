@@ -23,6 +23,7 @@ define( 'ETM_DIR', plugin_dir_path( __FILE__ ) );
 define( 'ETM_URL', plugin_dir_url( __FILE__ ) );
 
 require_once ETM_DIR . 'includes/class-etm-settings.php';
+require_once ETM_DIR . 'includes/class-etm-license.php';
 require_once ETM_DIR . 'includes/class-etm-cpt.php';
 require_once ETM_DIR . 'includes/class-etm-meta.php';
 require_once ETM_DIR . 'includes/class-etm-admin.php';
@@ -38,6 +39,7 @@ function etm_init() {
 	load_plugin_textdomain( 'emotio-team', false, dirname( plugin_basename( ETM_FILE ) ) . '/languages' );
 
 	ETM_Settings::init();
+	ETM_License::init();
 	ETM_CPT::init();
 	ETM_Meta::init();
 	ETM_Admin::init();
@@ -59,6 +61,9 @@ function etm_activate() {
 register_activation_hook( __FILE__, 'etm_activate' );
 
 function etm_deactivate() {
+	if ( class_exists( 'ETM_License' ) ) {
+		ETM_License::unschedule();
+	}
 	flush_rewrite_rules();
 }
 register_deactivation_hook( __FILE__, 'etm_deactivate' );
