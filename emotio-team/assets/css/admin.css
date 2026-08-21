@@ -1,0 +1,45 @@
+/* Emotio Team — admin styles */
+
+.etm-fields {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+	gap: 4px 20px;
+}
+.etm-field label {
+	display: inline-block;
+	margin-bottom: 2px;
+}
+.etm-hover-image img {
+	border-radius: 6px;
+	margin-bottom: 8px;
+}
+
+/* List table */
+.wp-list-table .column-etm_photo { width: 64px; }
+.wp-list-table .column-etm_featured { width: 32px; text-align: center; }
+.wp-list-table .column-etm_order { width: 90px; }
+
+.etm-drag-handle {
+	cursor: grab;
+	color: #a7aaad;
+	vertical-align: middle;
+}
+.etm-drag-handle:hover { color: #2271b1; }
+
+.etm-sort-placeholder {
+	background: #f0f6fc;
+	border: 1px dashed #2271b1;
+	height: 60px;
+}
+.ui-sortable-helper {
+	background: #fff;
+	box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+}
+
+/* Settings page */
+.etm-settings-wrap input[type="color"] {
+	width: 60px;
+	height: 34px;
+	padding: 2px;
+	cursor: pointer;
+}

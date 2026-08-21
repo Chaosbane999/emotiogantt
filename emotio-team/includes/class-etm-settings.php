@@ -1,0 +1,244 @@
+<?php
+/**
+ * Plugin settings: design tokens, defaults, behaviour toggles.
+ *
+ * @package Emotio_Team
+ */
+
+if ( ! defined( 'ABSPATH' ) ) {
+	exit;
+}
+
+class ETM_Settings {
+
+	const OPTION = 'etm_settings';
+
+	/** @var array|null Cached settings. */
+	protected static $settings = null;
+
+	public static function init() {
+		add_action( 'admin_menu', array( __CLASS__, 'add_page' ) );
+		add_action( 'admin_init', array( __CLASS__, 'register' ) );
+	}
+
+	/**
+	 * Default settings.
+	 */
+	public static function defaults() {
+		return array(
+			'accent'         => '#1f2937',
+			'card_bg'        => '#ffffff',
+			'text_color'     => '',
+			'radius'         => 10,
+			'gap'            => 28,
+			'columns'        => 3,
+			'style'          => 'cards',
+			'hover'          => 'lift',
+			'image_ratio'    => '3-4',
+			'link'           => 'modal',
+			'archive_slug'   => 'team',
+			'enable_single'  => 1,
+			'enable_archive' => 1,
+			'enable_schema'  => 1,
+			'custom_css'     => '',
+		);
+	}
+
+	/**
+	 * Get a single setting (or all).
+	 */
+	public static function get( $key = null ) {
+		if ( null === self::$settings ) {
+			self::$settings = wp_parse_args( (array) get_option( self::OPTION, array() ), self::defaults() );
+		}
+		if ( null === $key ) {
+			return self::$settings;
+		}
+		return isset( self::$settings[ $key ] ) ? self::$settings[ $key ] : null;
+	}
+
+	public static function add_page() {
+		add_submenu_page(
+			'edit.php?post_type=team_member',
+			__( 'Team Settings', 'emotio-team' ),
+			__( 'Settings', 'emotio-team' ),
+			'manage_options',
+			'etm-settings',
+			array( __CLASS__, 'render_page' )
+		);
+	}
+
+	public static function register() {
+		register_setting(
+			'etm_settings_group',
+			self::OPTION,
+			array(
+				'type'              => 'array',
+				'sanitize_callback' => array( __CLASS__, 'sanitize' ),
+			)
+		);
+	}
+
+	/**
+	 * Sanitize the settings array.
+	 */
+	public static function sanitize( $input ) {
+		$out = self::defaults();
+		if ( ! is_array( $input ) ) {
+			return $out;
+		}
+
+		$out['accent']     = sanitize_hex_color( $input['accent'] ?? '' ) ?: $out['accent'];
+		$out['card_bg']    = sanitize_hex_color( $input['card_bg'] ?? '' ) ?: $out['card_bg'];
+		$out['text_color'] = sanitize_hex_color( $input['text_color'] ?? '' ) ?: '';
+		$out['radius']     = max( 0, min( 60, absint( $input['radius'] ?? 10 ) ) );
+		$out['gap']        = max( 0, min( 80, absint( $input['gap'] ?? 28 ) ) );
+		$out['columns']    = max( 1, min( 6, absint( $input['columns'] ?? 3 ) ) );
+
+		$styles  = array( 'cards', 'minimal', 'overlay', 'circle' );
+		$hovers  = array( 'lift', 'zoom', 'swap', 'grayscale', 'none' );
+		$ratios  = array( '1-1', '3-4', '2-3', '4-3', '16-9' );
+		$links   = array( 'modal', 'page', 'none' );
+
+		$out['style']       = in_array( $input['style'] ?? '', $styles, true ) ? $input['style'] : $out['style'];
+		$out['hover']       = in_array( $input['hover'] ?? '', $hovers, true ) ? $input['hover'] : $out['hover'];
+		$out['image_ratio'] = in_array( $input['image_ratio'] ?? '', $ratios, true ) ? $input['image_ratio'] : $out['image_ratio'];
+		$out['link']        = in_array( $input['link'] ?? '', $links, true ) ? $input['link'] : $out['link'];
+
+		$out['archive_slug']   = sanitize_title( $input['archive_slug'] ?? 'team' ) ?: 'team';
+		$out['enable_single']  = empty( $input['enable_single'] ) ? 0 : 1;
+		$out['enable_archive'] = empty( $input['enable_archive'] ) ? 0 : 1;
+		$out['enable_schema']  = empty( $input['enable_schema'] ) ? 0 : 1;
+		$out['custom_css']     = wp_strip_all_tags( $input['custom_css'] ?? '' );
+
+		// Slug or visibility changes need a rewrite flush on the next load.
+		update_option( 'etm_flush_needed', 1 );
+
+		return $out;
+	}
+
+	/**
+	 * CSS custom properties emitted with the front-end stylesheet.
+	 */
+	public static function css_vars() {
+		$s   = self::get();
+		$css = sprintf(
+			'.etm{--etm-accent:%1$s;--etm-card-bg:%2$s;--etm-radius:%3$dpx;--etm-gap:%4$dpx;%5$s}',
+			$s['accent'],
+			$s['card_bg'],
+			$s['radius'],
+			$s['gap'],
+			$s['text_color'] ? '--etm-text:' . $s['text_color'] . ';' : ''
+		);
+		if ( ! empty( $s['custom_css'] ) ) {
+			$css .= "\n" . $s['custom_css'];
+		}
+		return $css;
+	}
+
+	public static function render_page() {
+		$s = self::get();
+		?>
+		<div class="wrap etm-settings-wrap">
+			<h1><?php esc_html_e( 'Team Settings', 'emotio-team' ); ?></h1>
+			<p class="description"><?php esc_html_e( 'Site-wide defaults. Every option can be overridden per placement via the shortcode, block or WPBakery element.', 'emotio-team' ); ?></p>
+			<form method="post" action="options.php">
+				<?php settings_fields( 'etm_settings_group' ); ?>
+				<h2><?php esc_html_e( 'Design', 'emotio-team' ); ?></h2>
+				<table class="form-table" role="presentation">
+					<tr>
+						<th scope="row"><label for="etm-accent"><?php esc_html_e( 'Accent colour', 'emotio-team' ); ?></label></th>
+						<td><input type="color" id="etm-accent" name="<?php echo esc_attr( self::OPTION ); ?>[accent]" value="<?php echo esc_attr( $s['accent'] ); ?>">
+						<p class="description"><?php esc_html_e( 'Used for filters, links, social icons and highlights. Set this to your Salient accent colour for a seamless match.', 'emotio-team' ); ?></p></td>
+					</tr>
+					<tr>
+						<th scope="row"><label for="etm-card-bg"><?php esc_html_e( 'Card background', 'emotio-team' ); ?></label></th>
+						<td><input type="color" id="etm-card-bg" name="<?php echo esc_attr( self::OPTION ); ?>[card_bg]" value="<?php echo esc_attr( $s['card_bg'] ); ?>"></td>
+					</tr>
+					<tr>
+						<th scope="row"><label for="etm-radius"><?php esc_html_e( 'Corner radius (px)', 'emotio-team' ); ?></label></th>
+						<td><input type="number" min="0" max="60" id="etm-radius" name="<?php echo esc_attr( self::OPTION ); ?>[radius]" value="<?php echo esc_attr( $s['radius'] ); ?>"></td>
+					</tr>
+					<tr>
+						<th scope="row"><label for="etm-gap"><?php esc_html_e( 'Grid gap (px)', 'emotio-team' ); ?></label></th>
+						<td><input type="number" min="0" max="80" id="etm-gap" name="<?php echo esc_attr( self::OPTION ); ?>[gap]" value="<?php echo esc_attr( $s['gap'] ); ?>"></td>
+					</tr>
+					<tr>
+						<th scope="row"><label for="etm-style"><?php esc_html_e( 'Default card style', 'emotio-team' ); ?></label></th>
+						<td>
+							<select id="etm-style" name="<?php echo esc_attr( self::OPTION ); ?>[style]">
+								<?php foreach ( array( 'cards' => __( 'Cards', 'emotio-team' ), 'minimal' => __( 'Minimal', 'emotio-team' ), 'overlay' => __( 'Image overlay', 'emotio-team' ), 'circle' => __( 'Circle portrait', 'emotio-team' ) ) as $k => $label ) : ?>
+									<option value="<?php echo esc_attr( $k ); ?>" <?php selected( $s['style'], $k ); ?>><?php echo esc_html( $label ); ?></option>
+								<?php endforeach; ?>
+							</select>
+						</td>
+					</tr>
+					<tr>
+						<th scope="row"><label for="etm-hover"><?php esc_html_e( 'Default hover effect', 'emotio-team' ); ?></label></th>
+						<td>
+							<select id="etm-hover" name="<?php echo esc_attr( self::OPTION ); ?>[hover]">
+								<?php foreach ( array( 'lift' => __( 'Lift', 'emotio-team' ), 'zoom' => __( 'Image zoom', 'emotio-team' ), 'swap' => __( 'Swap to hover photo', 'emotio-team' ), 'grayscale' => __( 'Grayscale to colour', 'emotio-team' ), 'none' => __( 'None', 'emotio-team' ) ) as $k => $label ) : ?>
+									<option value="<?php echo esc_attr( $k ); ?>" <?php selected( $s['hover'], $k ); ?>><?php echo esc_html( $label ); ?></option>
+								<?php endforeach; ?>
+							</select>
+						</td>
+					</tr>
+					<tr>
+						<th scope="row"><label for="etm-ratio"><?php esc_html_e( 'Default photo ratio', 'emotio-team' ); ?></label></th>
+						<td>
+							<select id="etm-ratio" name="<?php echo esc_attr( self::OPTION ); ?>[image_ratio]">
+								<?php foreach ( array( '1-1' => '1:1', '3-4' => '3:4', '2-3' => '2:3', '4-3' => '4:3', '16-9' => '16:9' ) as $k => $label ) : ?>
+									<option value="<?php echo esc_attr( $k ); ?>" <?php selected( $s['image_ratio'], $k ); ?>><?php echo esc_html( $label ); ?></option>
+								<?php endforeach; ?>
+							</select>
+						</td>
+					</tr>
+					<tr>
+						<th scope="row"><label for="etm-columns"><?php esc_html_e( 'Default columns', 'emotio-team' ); ?></label></th>
+						<td><input type="number" min="1" max="6" id="etm-columns" name="<?php echo esc_attr( self::OPTION ); ?>[columns]" value="<?php echo esc_attr( $s['columns'] ); ?>"></td>
+					</tr>
+					<tr>
+						<th scope="row"><label for="etm-link"><?php esc_html_e( 'Card click behaviour', 'emotio-team' ); ?></label></th>
+						<td>
+							<select id="etm-link" name="<?php echo esc_attr( self::OPTION ); ?>[link]">
+								<option value="modal" <?php selected( $s['link'], 'modal' ); ?>><?php esc_html_e( 'Open profile modal', 'emotio-team' ); ?></option>
+								<option value="page" <?php selected( $s['link'], 'page' ); ?>><?php esc_html_e( 'Go to profile page', 'emotio-team' ); ?></option>
+								<option value="none" <?php selected( $s['link'], 'none' ); ?>><?php esc_html_e( 'Not clickable', 'emotio-team' ); ?></option>
+							</select>
+						</td>
+					</tr>
+				</table>
+				<h2><?php esc_html_e( 'Pages & SEO', 'emotio-team' ); ?></h2>
+				<table class="form-table" role="presentation">
+					<tr>
+						<th scope="row"><label for="etm-slug"><?php esc_html_e( 'Team URL slug', 'emotio-team' ); ?></label></th>
+						<td><input type="text" id="etm-slug" name="<?php echo esc_attr( self::OPTION ); ?>[archive_slug]" value="<?php echo esc_attr( $s['archive_slug'] ); ?>" class="regular-text">
+						<p class="description"><?php echo esc_html( sprintf( __( 'Profiles live at /%s/name/ and the team listing at /%s/.', 'emotio-team' ), $s['archive_slug'], $s['archive_slug'] ) ); ?></p></td>
+					</tr>
+					<tr>
+						<th scope="row"><?php esc_html_e( 'Individual profile pages', 'emotio-team' ); ?></th>
+						<td><label><input type="checkbox" name="<?php echo esc_attr( self::OPTION ); ?>[enable_single]" value="1" <?php checked( $s['enable_single'], 1 ); ?>> <?php esc_html_e( 'Give each team member their own page', 'emotio-team' ); ?></label></td>
+					</tr>
+					<tr>
+						<th scope="row"><?php esc_html_e( 'Team archive page', 'emotio-team' ); ?></th>
+						<td><label><input type="checkbox" name="<?php echo esc_attr( self::OPTION ); ?>[enable_archive]" value="1" <?php checked( $s['enable_archive'], 1 ); ?>> <?php esc_html_e( 'Enable the built-in searchable team listing page', 'emotio-team' ); ?></label></td>
+					</tr>
+					<tr>
+						<th scope="row"><?php esc_html_e( 'Structured data', 'emotio-team' ); ?></th>
+						<td><label><input type="checkbox" name="<?php echo esc_attr( self::OPTION ); ?>[enable_schema]" value="1" <?php checked( $s['enable_schema'], 1 ); ?>> <?php esc_html_e( 'Output schema.org Person / ItemList JSON-LD for SEO', 'emotio-team' ); ?></label></td>
+					</tr>
+				</table>
+				<h2><?php esc_html_e( 'Custom CSS', 'emotio-team' ); ?></h2>
+				<p class="description"><?php esc_html_e( 'Applied wherever team layouts render. All plugin styles hang off CSS variables (--etm-accent, --etm-radius, --etm-gap, --etm-card-bg) so overrides are easy.', 'emotio-team' ); ?></p>
+				<textarea name="<?php echo esc_attr( self::OPTION ); ?>[custom_css]" rows="8" class="large-text code"><?php echo esc_textarea( $s['custom_css'] ); ?></textarea>
+				<?php submit_button(); ?>
+			</form>
+
+			<hr>
+			<h2><?php esc_html_e( 'Shortcode reference', 'emotio-team' ); ?></h2>
+			<p><code>[emotio_team layout="grid" columns="3" style="cards" hover="lift" department="design" show_filter="yes" show_search="yes"]</code></p>
+			<p class="description"><?php esc_html_e( 'Attributes: layout (grid|slider|list), columns (1–6), style (cards|minimal|overlay|circle), hover (lift|zoom|swap|grayscale|none), image_ratio (1-1|3-4|2-3|4-3|16-9), department, tag, ids, exclude, limit, orderby (menu_order|title|date|rand), order (ASC|DESC), link (modal|page|none), show_filter, show_search, show_social, show_bio, accent, gap, autoplay, autoplay_speed.', 'emotio-team' ); ?></p>
+		</div>
+		<?php
+	}
+}
