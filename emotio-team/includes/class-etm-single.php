@@ -114,7 +114,7 @@ class ETM_Single {
 	 * Person JSON-LD on single profiles.
 	 */
 	public static function single_schema() {
-		if ( ! is_singular( ETM_CPT::POST_TYPE ) || ! ETM_Settings::get( 'enable_schema' ) ) {
+		if ( ! is_singular( ETM_CPT::POST_TYPE ) || ! ETM_Settings::schema_enabled() ) {
 			return;
 		}
 		$id      = get_queried_object_id();

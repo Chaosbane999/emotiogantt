@@ -160,7 +160,7 @@ class ETM_Shortcode {
 			<p class="etm-no-results" hidden><?php esc_html_e( 'No team members match your search.', 'emotio-team' ); ?></p>
 		</div>
 		<?php
-		if ( ETM_Settings::get( 'enable_schema' ) && $schema_people ) {
+		if ( ETM_Settings::schema_enabled() && $schema_people ) {
 			echo self::schema( $schema_people ); // phpcs:ignore WordPress.Security.EscapeOutput
 		}
 		wp_reset_postdata();

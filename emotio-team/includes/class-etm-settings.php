@@ -118,6 +118,27 @@ class ETM_Settings {
 	}
 
 	/**
+	 * Should the plugin output schema.org JSON-LD?
+	 * Off when disabled in settings, auto-suppressed when AI Schema Pro is
+	 * active (it owns structured data then), and filterable either way via
+	 * `etm_output_schema`.
+	 */
+	public static function schema_enabled() {
+		$enabled = (bool) self::get( 'enable_schema' );
+
+		if ( $enabled ) {
+			foreach ( (array) get_option( 'active_plugins', array() ) as $plugin ) {
+				if ( false !== stripos( $plugin, 'ai-schema-pro' ) || false !== stripos( $plugin, 'ai_schema_pro' ) ) {
+					$enabled = false;
+					break;
+				}
+			}
+		}
+
+		return (bool) apply_filters( 'etm_output_schema', $enabled );
+	}
+
+	/**
 	 * CSS custom properties emitted with the front-end stylesheet.
 	 */
 	public static function css_vars() {
@@ -225,7 +246,8 @@ class ETM_Settings {
 					</tr>
 					<tr>
 						<th scope="row"><?php esc_html_e( 'Structured data', 'emotio-team' ); ?></th>
-						<td><label><input type="checkbox" name="<?php echo esc_attr( self::OPTION ); ?>[enable_schema]" value="1" <?php checked( $s['enable_schema'], 1 ); ?>> <?php esc_html_e( 'Output schema.org Person / ItemList JSON-LD for SEO', 'emotio-team' ); ?></label></td>
+						<td><label><input type="checkbox" name="<?php echo esc_attr( self::OPTION ); ?>[enable_schema]" value="1" <?php checked( $s['enable_schema'], 1 ); ?>> <?php esc_html_e( 'Output schema.org Person / ItemList JSON-LD for SEO', 'emotio-team' ); ?></label>
+						<p class="description"><?php esc_html_e( 'Automatically suppressed while AI Schema Pro is active, so structured data is never duplicated.', 'emotio-team' ); ?></p></td>
 					</tr>
 				</table>
 				<h2><?php esc_html_e( 'Custom CSS', 'emotio-team' ); ?></h2>
