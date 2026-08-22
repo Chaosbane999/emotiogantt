@@ -792,6 +792,19 @@
 	font-size: 0.95em;
 	line-height: 1.7;
 }
+.etm-detail-bio h2,
+.etm-detail-bio h3,
+.etm-detail-bio h4 {
+	margin: 20px 0 8px !important;
+	line-height: 1.25;
+}
+.etm-detail-bio h2 { font-size: 1.35em; }
+.etm-detail-bio h3 { font-size: 1.18em; }
+.etm-detail-bio h4 { font-size: 1.05em; letter-spacing: 0.03em; }
+.etm-detail-bio h2:first-child,
+.etm-detail-bio h3:first-child {
+	margin-top: 0 !important;
+}
 /* Builder-authored bios can carry theme animation wrappers (Salient's
    entrance animations leave columns at opacity:0 until a scroll reveal
    that never fires inside an overlay). Force everything visible. */

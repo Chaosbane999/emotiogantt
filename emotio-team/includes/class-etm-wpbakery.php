@@ -39,7 +39,7 @@ class ETM_WPBakery {
 				'name'        => __( 'Team Members', 'emotio-team' ),
 				'base'        => 'emotio_team',
 				'icon'        => 'dashicons dashicons-groups',
-				'category'    => 'Emotio',
+				'category'    => 'Team Pro',
 				'description' => __( 'Grid or slider of team members', 'emotio-team' ),
 				'params'      => array(
 					array(
@@ -279,7 +279,7 @@ class ETM_WPBakery {
 				'name'        => __( 'Team Member Card', 'emotio-team' ),
 				'base'        => 'emotio_team_member',
 				'icon'        => 'dashicons dashicons-id-alt',
-				'category'    => 'Emotio',
+				'category'    => 'Team Pro',
 				'description' => __( 'One member\'s card, anywhere on a page', 'emotio-team' ),
 				'params'      => array(
 					array(
@@ -339,7 +339,7 @@ class ETM_WPBakery {
 				'name'        => __( 'Saved Team Display', 'emotio-team' ),
 				'base'        => 'emotio_team_display',
 				'icon'        => 'dashicons dashicons-star-filled',
-				'category'    => 'Emotio',
+				'category'    => 'Team Pro',
 				'description' => __( 'A reusable display from the Shortcode Generator', 'emotio-team' ),
 				'params'      => array(
 					array(
@@ -359,7 +359,7 @@ class ETM_WPBakery {
 				'name'        => __( 'Team Search Bar', 'emotio-team' ),
 				'base'        => 'emotio_team_search',
 				'icon'        => 'dashicons dashicons-search',
-				'category'    => 'Emotio',
+				'category'    => 'Team Pro',
 				'description' => __( 'Live search box that filters a team layout on the page', 'emotio-team' ),
 				'params'      => array(
 					array(
@@ -382,7 +382,7 @@ class ETM_WPBakery {
 				'name'        => __( 'Team Department Filter', 'emotio-team' ),
 				'base'        => 'emotio_team_filter',
 				'icon'        => 'dashicons dashicons-filter',
-				'category'    => 'Emotio',
+				'category'    => 'Team Pro',
 				'description' => __( 'Department chips that filter a team layout on the page', 'emotio-team' ),
 				'params'      => array(
 					array(

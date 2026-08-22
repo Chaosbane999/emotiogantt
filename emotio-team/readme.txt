@@ -1,10 +1,10 @@
-=== Emotio Team ===
+=== Emotio Team Pro ===
 Contributors: emotiodesigngroup
 Tags: team, staff, team members, salient, slider, grid, people
 Requires at least: 5.8
 Tested up to: 6.7
 Requires PHP: 7.4
-Stable tag: 1.5.6
+Stable tag: 1.5.7
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -34,7 +34,7 @@ Emotio Team gives a Salient (or any WordPress) site a complete, beautifully desi
 * A visual **Shortcode Generator** and **saved displays**: build a configuration once, place `[emotio_team_display id="3"]` on any number of pages, edit centrally forever.
 * **Per-field card control** (department, email, phone, location each toggleable), **per-device columns** (desktop/tablet/mobile) and a per-member **Custom URL** click action.
 * Optional front-end **live search** and **department filter chips** on any placement — plus standalone **Team Search Bar** and **Department Filter** elements that control any team layout on the page.
-* A dedicated **"Emotio" category** in Salient's builder, with a **Team Member Card** element for single profiles.
+* A dedicated **"Team Pro" category** in Salient's builder, with a **Team Member Card** element for single profiles.
 * **Profile triggers on any element**: Salient Buttons/Images/Icons get a "Team Profile" tab, and any element with the class `etm-profile-ID` / `etm-panel-ID` (or a `#etm-profile-ID` link) opens that member's modal or panel — even on pages with no team layout.
 * Built-in searchable **/team/ archive page** and individual profile pages (both optional).
 
@@ -93,6 +93,11 @@ Copy `templates/single-team_member.php` or `templates/archive-team_member.php` i
 The plugin keeps working. An expired or missing license only surfaces a notice on the Team admin screens and switches the `etm_is_licensed` filter to false (updates and support are tied to an active license).
 
 == Changelog ==
+
+= 1.5.7 =
+* Renamed to Emotio Team Pro; the builder element category is now "Team Pro".
+* Fixed: an H1 at the top of a member's biography now renders as a heading in the profile (demoted to H2 — overlays shouldn't carry a page H1), with proper heading styles for H2/H3/H4 inside the bio.
+
 
 = 1.5.6 =
 * Fixed: biographies authored with the page builder were rendering invisibly in the profile modal/slide-out — Salient's entrance animations leave builder columns at opacity 0 until a scroll reveal that never fires inside an overlay. The profile now strips builder wrapper markup down to clean text-level tags, and a CSS guard forces everything inside the bio visible. Diagnosed and verified live against staging.

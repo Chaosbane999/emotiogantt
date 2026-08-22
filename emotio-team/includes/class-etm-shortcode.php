@@ -900,6 +900,9 @@ class ETM_Shortcode {
 		$raw = trim( (string) $post->post_content );
 		if ( $raw ) {
 			$raw = preg_replace( '/\[\/?[a-zA-Z0-9_\-]+[^\]]*\]/', ' ', $raw );
+			// An H1 belongs to the page, not an overlay — demote bio H1s to
+			// H2 so they still render as headings instead of being stripped.
+			$raw = preg_replace( '/<(\/?)h1(\s[^>]*)?>/i', '<${1}h2>', $raw );
 			// Text-level tags only: builder wrapper divs (and their theme
 			// animation classes, which hide content until scroll reveals
 			// that never fire inside an overlay) are stripped entirely.
