@@ -12,6 +12,25 @@
 	var modal = null;
 	var lastTrigger = null;
 
+	/* ------------------------------------------- ?etm_debug=1 overlay */
+
+	var debugBox = null;
+
+	function debugLog(message) {
+		if (window.location.search.indexOf('etm_debug') === -1) {
+			return;
+		}
+		if (!debugBox) {
+			debugBox = document.createElement('div');
+			debugBox.style.cssText = 'position:fixed;left:12px;bottom:12px;z-index:2147483647;background:#111;color:#7CFC98;font:12px/1.6 monospace;padding:10px 14px;border-radius:8px;max-width:420px;max-height:40vh;overflow:auto;box-shadow:0 8px 30px rgba(0,0,0,.5);';
+			debugBox.innerHTML = '<strong style="color:#fff">Emotio Team JS v' + (i18n.version || '?') + '</strong><br>';
+			(document.body || document.documentElement).appendChild(debugBox);
+		}
+		var line = document.createElement('div');
+		line.textContent = message;
+		debugBox.appendChild(line);
+	}
+
 	/* ------------------------------------------------------------ modal */
 
 	function buildModal() {
@@ -245,25 +264,33 @@
 
 	function openRemoteProfile(key, mode, trigger, styleCss, onFail) {
 		if (profileCache[key]) {
+			debugLog('profile ' + key + ': served from cache (' + mode + ')');
 			showRemoteProfile(profileCache[key], mode, styleCss);
 			return;
 		}
 		var ajaxUrl = i18n.ajaxUrl || '/wp-admin/admin-ajax.php';
+		debugLog('profile ' + key + ': fetching ' + ajaxUrl);
 		if (trigger) {
 			trigger.classList.add('etm-loading');
 		}
 		fetch(ajaxUrl + '?action=etm_profile&member=' + encodeURIComponent(key))
-			.then(function (response) { return response.json(); })
+			.then(function (response) {
+				debugLog('profile ' + key + ': HTTP ' + response.status);
+				return response.json();
+			})
 			.then(function (data) {
 				if (data && data.success && data.data && data.data.html) {
 					profileCache[key] = data.data.html;
+					debugLog('profile ' + key + ': OK, ' + data.data.html.length + ' chars, bio=' + (data.data.html.indexOf('etm-detail-bio') !== -1 ? 'yes' : 'NO'));
 					showRemoteProfile(data.data.html, mode, styleCss);
 				} else if (onFail) {
+					debugLog('profile ' + key + ': no HTML in response — FALLBACK to inline template');
 					window.console && console.warn('Emotio Team: profile fetch returned no HTML, using inline fallback', data);
 					onFail();
 				}
 			})
 			.catch(function (err) {
+				debugLog('profile ' + key + ': fetch FAILED (' + err + ') — FALLBACK to inline template');
 				window.console && console.warn('Emotio Team: profile fetch failed, using inline fallback', err);
 				if (onFail) {
 					onFail();
@@ -756,10 +783,22 @@
 		}, true);
 	}
 
+	var debugBooted = false;
+
 	function initAll() {
 		document.querySelectorAll('[data-etm]').forEach(initInstance);
 		initRemoteControls();
 		bindGlobalTriggers();
+
+		if (!debugBooted && window.location.search.indexOf('etm_debug') !== -1) {
+			debugBooted = true;
+			var instances = document.querySelectorAll('[data-etm]');
+			debugLog('instances: ' + instances.length);
+			instances.forEach(function (instance, index) {
+				debugLog('#' + (index + 1) + ' layout=' + instance.getAttribute('data-layout') + ' link=' + instance.getAttribute('data-link') + ' members=' + instance.querySelectorAll('.etm-item').length + ' data-member=' + (instance.querySelector('.etm-item[data-member]') ? 'yes' : 'MISSING (old markup!)'));
+			});
+			debugLog('ajaxUrl: ' + (i18n.ajaxUrl || 'MISSING (old markup!)'));
+		}
 	}
 
 	if (document.readyState === 'loading') {

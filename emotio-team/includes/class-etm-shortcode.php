@@ -155,7 +155,51 @@ class ETM_Shortcode {
 				'prev'       => __( 'Previous', 'emotio-team' ),
 				'next'       => __( 'Next', 'emotio-team' ),
 				'ajaxUrl'    => admin_url( 'admin-ajax.php' ),
+				'version'    => ETM_VERSION,
 			)
+		);
+
+		// Keep optimiser/caching plugins away from our script: combined or
+		// delayed copies go stale and break profile opening. These flags are
+		// honoured by WP Rocket, Autoptimize, Cloudflare Rocket Loader and
+		// most delay-JS features.
+		add_filter(
+			'script_loader_tag',
+			function ( $tag, $handle ) {
+				if ( 'etm-team' === $handle && false === strpos( $tag, 'nowprocket' ) ) {
+					$tag = str_replace( '<script ', '<script nowprocket data-no-optimize="1" data-no-defer="1" data-cfasync="false" ', $tag );
+				}
+				return $tag;
+			},
+			10,
+			2
+		);
+		add_filter(
+			'rocket_delay_js_exclusions',
+			function ( $exclusions ) {
+				$exclusions[] = 'emotio-team';
+				return $exclusions;
+			}
+		);
+		add_filter(
+			'rocket_exclude_js',
+			function ( $exclusions ) {
+				$exclusions[] = '/wp-content/plugins/emotio-team/(.*).js';
+				return $exclusions;
+			}
+		);
+		add_filter(
+			'rocket_exclude_defer_js',
+			function ( $exclusions ) {
+				$exclusions[] = 'emotio-team';
+				return $exclusions;
+			}
+		);
+		add_filter(
+			'autoptimize_filter_js_exclude',
+			function ( $exclude ) {
+				return $exclude . ', emotio-team';
+			}
 		);
 	}
 
