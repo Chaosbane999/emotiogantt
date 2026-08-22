@@ -109,12 +109,25 @@ class ETM_Import_Export {
 		foreach ( $members as $post ) {
 			$row = array();
 			foreach ( $columns as $column ) {
-				$row[] = self::export_value( $post, $column );
+				$row[] = self::csv_cell( self::export_value( $post, $column ) );
 			}
 			fputcsv( $out, $row );
 		}
 		fclose( $out );
 		exit;
+	}
+
+	/**
+	 * Neutralise CSV formula injection: spreadsheet apps execute cells
+	 * starting with = + - @ (or tab/CR). Prefix them with a quote; the
+	 * importer strips it again so round-trips are lossless.
+	 */
+	protected static function csv_cell( $value ) {
+		$value = (string) $value;
+		if ( '' !== $value && false !== strpbrk( $value[0], "=+-@\t\r" ) ) {
+			$value = "'" . $value;
+		}
+		return $value;
 	}
 
 	protected static function export_value( $post, $column ) {
@@ -235,7 +248,12 @@ class ETM_Import_Export {
 			}
 			$row = array();
 			foreach ( $header as $i => $column ) {
-				$row[ $column ] = isset( $data[ $i ] ) ? trim( (string) $data[ $i ] ) : '';
+				$cell = isset( $data[ $i ] ) ? trim( (string) $data[ $i ] ) : '';
+				// Undo the export's formula-injection guard.
+				if ( preg_match( "/^'[=+\\-@]/", $cell ) ) {
+					$cell = substr( $cell, 1 );
+				}
+				$row[ $column ] = $cell;
 			}
 			try {
 				self::import_row( $row, $update_existing, $fetch_photos, $result );

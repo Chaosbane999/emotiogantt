@@ -108,7 +108,7 @@ class ETM_Meta {
 				array(
 					'type'          => 'string',
 					'single'        => true,
-					'show_in_rest'  => true,
+					'show_in_rest'  => false,
 					'auth_callback' => function () {
 						return current_user_can( 'edit_posts' );
 					},
@@ -121,7 +121,7 @@ class ETM_Meta {
 			array(
 				'type'          => 'integer',
 				'single'        => true,
-				'show_in_rest'  => true,
+				'show_in_rest'  => false,
 				'auth_callback' => function () {
 					return current_user_can( 'edit_posts' );
 				},
@@ -133,7 +133,7 @@ class ETM_Meta {
 			array(
 				'type'          => 'boolean',
 				'single'        => true,
-				'show_in_rest'  => true,
+				'show_in_rest'  => false,
 				'auth_callback' => function () {
 					return current_user_can( 'edit_posts' );
 				},

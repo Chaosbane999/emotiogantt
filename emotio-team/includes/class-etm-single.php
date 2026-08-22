@@ -64,6 +64,14 @@ class ETM_Single {
 			wp_die( esc_html__( 'Team member not found.', 'emotio-team' ), 404 );
 		}
 
+		// Respect the profile-content settings: no vCards when the button
+		// is disabled, and no contact details when contact is hidden.
+		$sections = ETM_Settings::modal_sections( $post );
+		if ( ! in_array( 'vcard', $sections, true ) ) {
+			wp_die( esc_html__( 'Contact downloads are disabled.', 'emotio-team' ), 404 );
+		}
+		$contact_enabled = in_array( 'contact', $sections, true );
+
 		$name  = get_the_title( $post );
 		$parts = explode( ' ', $name, 2 );
 		$first = $parts[0];
@@ -81,15 +89,15 @@ class ETM_Single {
 		if ( $title ) {
 			$lines[] = 'TITLE:' . self::vesc( $title );
 		}
-		$email = ETM_Meta::get( $id, 'email' );
+		$email = $contact_enabled ? ETM_Meta::get( $id, 'email' ) : '';
 		if ( $email ) {
 			$lines[] = 'EMAIL;TYPE=WORK:' . self::vesc( $email );
 		}
-		$phone = ETM_Meta::get( $id, 'phone' );
+		$phone = $contact_enabled ? ETM_Meta::get( $id, 'phone' ) : '';
 		if ( $phone ) {
 			$lines[] = 'TEL;TYPE=WORK,VOICE:' . self::vesc( $phone );
 		}
-		$mobile = ETM_Meta::get( $id, 'mobile' );
+		$mobile = $contact_enabled ? ETM_Meta::get( $id, 'mobile' ) : '';
 		if ( $mobile ) {
 			$lines[] = 'TEL;TYPE=CELL,VOICE:' . self::vesc( $mobile );
 		}
@@ -111,7 +119,7 @@ class ETM_Single {
 	}
 
 	protected static function vesc( $value ) {
-		return str_replace( array( '\\', ';', ',', "\n" ), array( '\\\\', '\\;', '\\,', '\\n' ), $value );
+		return str_replace( array( '\\', ';', ',', "\r", "\n" ), array( '\\\\', '\\;', '\\,', '', '\\n' ), $value );
 	}
 
 	/**

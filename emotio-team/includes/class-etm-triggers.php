@@ -54,6 +54,15 @@ class ETM_Triggers {
 	 * Accepts a post ID or slug via ?member=.
 	 */
 	public static function ajax_profile() {
+		// Public endpoint: cheap per-IP rate limit against scraping/abuse.
+		$ip     = isset( $_SERVER['REMOTE_ADDR'] ) ? sanitize_text_field( wp_unslash( $_SERVER['REMOTE_ADDR'] ) ) : 'unknown';
+		$bucket = 'etm_rl_' . md5( $ip );
+		$count  = (int) get_transient( $bucket );
+		if ( $count >= 120 ) {
+			wp_send_json_error( array( 'message' => 'rate_limited' ), 429 );
+		}
+		set_transient( $bucket, $count + 1, 5 * MINUTE_IN_SECONDS );
+
 		$key  = isset( $_GET['member'] ) ? sanitize_text_field( wp_unslash( $_GET['member'] ) ) : '';
 		$post = null;
 

@@ -4,7 +4,7 @@ Tags: team, staff, team members, salient, slider, grid, people
 Requires at least: 5.8
 Tested up to: 6.7
 Requires PHP: 7.4
-Stable tag: 1.5.7
+Stable tag: 1.6.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -93,6 +93,11 @@ Copy `templates/single-team_member.php` or `templates/archive-team_member.php` i
 The plugin keeps working. An expired or missing license only surfaces a notice on the Team admin screens and switches the `etm_is_licensed` filter to false (updates and support are tied to an active license).
 
 == Changelog ==
+
+= 1.6.0 =
+* Security release (pre-sale audit). Fixed: CSV formula injection on export (dangerous leading characters are neutralised, losslessly round-tripped on import); member contact details (email, phone, mobile, socials) are no longer exposed through the public REST API; the vCard endpoint now honours the profile-content settings (404 when "Save contact" is disabled, contact details omitted when contact display is off) and strips carriage returns; the public profile endpoint is rate-limited per IP (120 requests / 5 minutes).
+* Audit confirmed: nonces + capability checks on every state-changing action, prepared SQL throughout, escaped output, validated uploads, HTTPS-only update packages.
+
 
 = 1.5.7 =
 * Renamed to Emotio Team Pro; the builder element category is now "Team Pro".
