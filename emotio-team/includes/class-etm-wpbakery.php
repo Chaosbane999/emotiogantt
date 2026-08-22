@@ -47,10 +47,18 @@ class ETM_WPBakery {
 						'heading'     => __( 'Layout', 'emotio-team' ),
 						'param_name'  => 'layout',
 						'value'       => array(
-							__( 'Grid', 'emotio-team' )   => 'grid',
-							__( 'Slider', 'emotio-team' ) => 'slider',
-							__( 'List', 'emotio-team' )   => 'list',
+							__( 'Grid', 'emotio-team' )                              => 'grid',
+							__( 'Slider', 'emotio-team' )                            => 'slider',
+							__( 'List', 'emotio-team' )                              => 'list',
+							__( 'Spotlight (featured large + grid)', 'emotio-team' ) => 'spotlight',
 						),
+					),
+					array(
+						'type'       => 'checkbox',
+						'heading'    => __( 'Grouping', 'emotio-team' ),
+						'param_name' => 'group_by',
+						'value'      => array( __( 'Group members under department headings', 'emotio-team' ) => 'department' ),
+						'dependency' => array( 'element' => 'layout', 'value' => array( 'grid', 'list' ) ),
 					),
 					array(
 						'type'       => 'dropdown',

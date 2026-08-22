@@ -222,6 +222,11 @@
 			empty.hidden = visible > 0;
 		}
 
+		// Grouped layout: hide department sections with nothing to show.
+		instance.querySelectorAll('.etm-group').forEach(function (group) {
+			group.hidden = !group.querySelector('.etm-item:not(.is-hidden)');
+		});
+
 		if (instance._slider) {
 			instance._slider.refresh();
 		}

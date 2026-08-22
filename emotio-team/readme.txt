@@ -4,7 +4,7 @@ Tags: team, staff, team members, salient, slider, grid, people
 Requires at least: 5.8
 Tested up to: 6.7
 Requires PHP: 7.4
-Stable tag: 1.2.0
+Stable tag: 1.3.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -27,7 +27,8 @@ Emotio Team gives a Salient (or any WordPress) site a complete, beautifully desi
 
 **Placing the team on pages**
 
-* `[emotio_team]` shortcode, a live-preview **Gutenberg block**, and a **WPBakery element** (the builder Salient ships with) — all rendered by the same engine, so they always match.
+* `[emotio_team]` shortcode, a live-preview **Gutenberg block**, a **WPBakery element** (the builder Salient ships with) and a native **Elementor widget** — all rendered by the same engine, so they always match.
+* **Spotlight layout** (featured members large, the rest in a grid) and **group-by-department sections** with per-department headings.
 * **Grid, slider or list** deployment. The slider is dependency-free, touch-native (CSS scroll-snap), keyboard accessible, with arrows, dots and optional autoplay.
 * Filter any placement by **department, skill/tag, specific IDs or Featured** members.
 * Optional front-end **live search** and **department filter chips** on any placement.
@@ -88,6 +89,12 @@ Copy `templates/single-team_member.php` or `templates/archive-team_member.php` i
 The plugin keeps working. An expired or missing license only surfaces a notice on the Team admin screens and switches the `etm_is_licensed` filter to false (updates and support are tied to an active license).
 
 == Changelog ==
+
+= 1.3.0 =
+* New: native Elementor widget (Elementor 3.5+) with the full control set — layout, slider style, grouping, design, typography — rendered by the same engine as the shortcode, block and WPBakery element.
+* New: automatic plugin updates, gated on an active license/trial. Releases are read from a JSON manifest at emotio-design-group.co.uk/updates/emotio-team.json (override with ETM_UPDATE_MANIFEST or the etm_update_manifest_url filter); licensed sites see the update on the Plugins screen like any other, complete with a View-details changelog.
+* New: Spotlight layout (layout="spotlight") — Featured members render as large horizontal cards with a longer intro, everyone else follows in the normal grid.
+* New: group by department (group_by="department") — grid/list layouts render one titled section per department; live search hides sections with no matches, and members in several departments appear in each.
 
 = 1.2.0 =
 * New: CSV import/export under Team → Import / Export — export every member (all fields, socials, departments, tags, custom fields, photo URLs) for backup or spreadsheet editing; import upserts rows (matched by id, then email, then name), creates departments/tags on the fly, and fetches photos from photo_url / hover_photo_url into the media library. Blank template download included.

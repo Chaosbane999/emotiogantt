@@ -66,6 +66,7 @@ class ETM_Shortcode {
 			'show_social'    => 'yes',
 			'show_bio'       => 'no',
 			'show_title'     => 'yes',
+			'group_by'       => '',
 			'accent'         => '',
 			'gap'            => '',
 			'spacing'        => ETM_Settings::get( 'spacing' ),
@@ -93,7 +94,8 @@ class ETM_Shortcode {
 	public static function render( $atts ) {
 		$a = shortcode_atts( self::defaults(), (array) $atts, 'emotio_team' );
 
-		$a['layout']  = in_array( $a['layout'], array( 'grid', 'slider', 'list' ), true ) ? $a['layout'] : 'grid';
+		$a['layout']   = in_array( $a['layout'], array( 'grid', 'slider', 'list', 'spotlight' ), true ) ? $a['layout'] : 'grid';
+		$a['group_by'] = in_array( $a['group_by'], array( 'department', 'yes', '1' ), true ) ? 'department' : '';
 		$a['style']   = in_array( $a['style'], array( 'cards', 'minimal', 'overlay', 'circle' ), true ) ? $a['style'] : 'cards';
 		$a['hover']   = in_array( $a['hover'], array( 'lift', 'zoom', 'swap', 'grayscale', 'none' ), true ) ? $a['hover'] : 'lift';
 		$a['link']         = in_array( $a['link'], array( 'modal', 'panel', 'page', 'none' ), true ) ? $a['link'] : 'modal';
@@ -190,6 +192,10 @@ class ETM_Shortcode {
 					<button type="button" class="etm-arrow etm-arrow--next" aria-label="<?php esc_attr_e( 'Next team members', 'emotio-team' ); ?>"><?php echo self::icon( 'chevron-right' ); // phpcs:ignore ?></button>
 					<div class="etm-dots" role="tablist"></div>
 				</div>
+			<?php elseif ( 'spotlight' === $a['layout'] ) : ?>
+				<?php self::spotlight( $members, $a, $schema_people ); ?>
+			<?php elseif ( 'department' === $a['group_by'] ) : ?>
+				<?php self::grouped( $members, $a, $schema_people ); ?>
 			<?php else : ?>
 				<div class="etm-grid">
 					<?php self::cards( $members, $a, $schema_people ); ?>
@@ -338,6 +344,159 @@ class ETM_Shortcode {
 		while ( $members->have_posts() ) {
 			$members->the_post();
 			self::card( get_post(), $a, $schema_people );
+		}
+	}
+
+	/**
+	 * Spotlight layout: featured members render as large horizontal cards,
+	 * everyone else follows in the normal grid.
+	 */
+	protected static function spotlight( WP_Query $members, $a, &$schema_people ) {
+		$featured = array();
+		$rest     = array();
+		foreach ( $members->posts as $post ) {
+			if ( ETM_Meta::get( $post->ID, 'featured' ) ) {
+				$featured[] = $post;
+			} else {
+				$rest[] = $post;
+			}
+		}
+		// Nobody flagged as featured: spotlight the first member.
+		if ( ! $featured && $rest ) {
+			$featured[] = array_shift( $rest );
+		}
+
+		echo '<div class="etm-spotlight">';
+		foreach ( $featured as $post ) {
+			self::spotlight_card( $post, $a, $schema_people );
+		}
+		echo '</div>';
+
+		if ( $rest ) {
+			echo '<div class="etm-grid">';
+			foreach ( $rest as $post ) {
+				self::card( $post, $a, $schema_people );
+			}
+			echo '</div>';
+		}
+	}
+
+	/**
+	 * One large spotlight card.
+	 */
+	protected static function spotlight_card( $post, $a, &$schema_people ) {
+		$id        = $post->ID;
+		$name      = get_the_title( $post );
+		$job_title = ETM_Meta::get( $id, 'job_title' );
+		$socials   = ETM_Meta::socials( $id );
+		$permalink = get_permalink( $post );
+
+		$bio = has_excerpt( $post ) ? get_the_excerpt( $post ) : wp_strip_all_tags( $post->post_content );
+		$bio = $bio ? wp_trim_words( $bio, 48 ) : '';
+
+		$dept_terms = get_the_terms( $post, ETM_CPT::TAX_DEPT );
+		$dept_slugs = ( $dept_terms && ! is_wp_error( $dept_terms ) ) ? wp_list_pluck( $dept_terms, 'slug' ) : array();
+		$dept_names = ( $dept_terms && ! is_wp_error( $dept_terms ) ) ? wp_list_pluck( $dept_terms, 'name' ) : array();
+
+		$schema_people[] = array(
+			'name'  => $name,
+			'title' => $job_title,
+			'url'   => ETM_Settings::get( 'enable_single' ) ? $permalink : '',
+			'image' => get_the_post_thumbnail_url( $post, 'large' ),
+			'email' => ETM_Meta::get( $id, 'email' ),
+		);
+
+		$clickable = 'none' !== $a['link'];
+		$is_modal  = in_array( $a['link'], array( 'modal', 'panel' ), true );
+		?>
+		<div class="etm-item etm-item--spotlight"
+			data-search="<?php echo esc_attr( strtolower( implode( ' ', array_filter( array_merge( array( $name, $job_title ), $dept_names ) ) ) ) ); ?>"
+			data-departments="<?php echo esc_attr( implode( ' ', $dept_slugs ) ); ?>"
+			data-name="<?php echo esc_attr( $name ); ?>"
+			data-photo="<?php echo esc_url( get_the_post_thumbnail_url( $post, 'large' ) ?: '' ); ?>">
+			<article class="etm-card etm-card--spotlight" <?php echo $is_modal ? 'data-modal-source' : ''; ?>>
+				<div class="etm-media">
+					<?php
+					if ( has_post_thumbnail( $post ) ) {
+						echo get_the_post_thumbnail( $post, 'large', array( 'class' => 'etm-photo', 'loading' => 'lazy' ) );
+					} else {
+						echo '<div class="etm-photo etm-photo--placeholder" aria-hidden="true">' . self::icon( 'user' ) . '</div>'; // phpcs:ignore
+					}
+					?>
+					<?php if ( $clickable ) : ?>
+						<?php if ( $is_modal ) : ?>
+							<button type="button" class="etm-hit" data-etm-open aria-haspopup="dialog">
+								<span class="screen-reader-text"><?php echo esc_html( sprintf( /* translators: %s: member name */ __( 'View profile of %s', 'emotio-team' ), $name ) ); ?></span>
+							</button>
+						<?php else : ?>
+							<a class="etm-hit" href="<?php echo esc_url( $permalink ); ?>">
+								<span class="screen-reader-text"><?php echo esc_html( sprintf( /* translators: %s: member name */ __( 'View profile of %s', 'emotio-team' ), $name ) ); ?></span>
+							</a>
+						<?php endif; ?>
+					<?php endif; ?>
+				</div>
+				<div class="etm-body">
+					<?php if ( $dept_names ) : ?><p class="etm-spotlight-dept"><?php echo esc_html( implode( ' · ', $dept_names ) ); ?></p><?php endif; ?>
+					<h3 class="etm-name"><?php echo self::name_link( $name, $permalink, $a ); // phpcs:ignore ?></h3>
+					<?php if ( $job_title && 'yes' === $a['show_title'] ) : ?><p class="etm-role"><?php echo esc_html( $job_title ); ?></p><?php endif; ?>
+					<?php if ( $bio ) : ?><p class="etm-bio"><?php echo esc_html( $bio ); ?></p><?php endif; ?>
+					<?php if ( 'no' !== $a['show_social'] && $socials ) : ?><?php self::social_row( $socials ); ?><?php endif; ?>
+				</div>
+			</article>
+			<?php if ( $is_modal ) : ?>
+				<template class="etm-detail"><?php self::detail( $post, $socials ); ?></template>
+			<?php endif; ?>
+		</div>
+		<?php
+	}
+
+	/**
+	 * Grid grouped into one section per department (members without a
+	 * department land in a trailing "Team" group). A member in several
+	 * departments appears in each of them.
+	 */
+	protected static function grouped( WP_Query $members, $a, &$schema_people ) {
+		$groups = array();
+		$loose  = array();
+
+		foreach ( $members->posts as $post ) {
+			$terms = get_the_terms( $post, ETM_CPT::TAX_DEPT );
+			if ( $terms && ! is_wp_error( $terms ) ) {
+				foreach ( $terms as $term ) {
+					if ( ! isset( $groups[ $term->term_id ] ) ) {
+						$groups[ $term->term_id ] = array(
+							'name'  => $term->name,
+							'posts' => array(),
+						);
+					}
+					$groups[ $term->term_id ]['posts'][] = $post;
+				}
+			} else {
+				$loose[] = $post;
+			}
+		}
+
+		uasort(
+			$groups,
+			function ( $x, $y ) {
+				return strcasecmp( $x['name'], $y['name'] );
+			}
+		);
+		if ( $loose ) {
+			$groups['_loose'] = array(
+				'name'  => __( 'Team', 'emotio-team' ),
+				'posts' => $loose,
+			);
+		}
+
+		foreach ( $groups as $group ) {
+			echo '<section class="etm-group">';
+			echo '<h3 class="etm-group-title">' . esc_html( $group['name'] ) . '</h3>';
+			echo '<div class="etm-grid">';
+			foreach ( $group['posts'] as $post ) {
+				self::card( $post, $a, $schema_people );
+			}
+			echo '</div></section>';
 		}
 	}
 
@@ -539,6 +698,21 @@ class ETM_Shortcode {
 	 */
 	protected static function schema( $people ) {
 		$items = array();
+		$seen  = array();
+		// Grouped layouts can render a member more than once — dedupe.
+		$people = array_values(
+			array_filter(
+				$people,
+				function ( $p ) use ( &$seen ) {
+					$sig = $p['name'] . '|' . $p['title'];
+					if ( isset( $seen[ $sig ] ) ) {
+						return false;
+					}
+					$seen[ $sig ] = true;
+					return true;
+				}
+			)
+		);
 		foreach ( $people as $i => $p ) {
 			$person = array_filter(
 				array(

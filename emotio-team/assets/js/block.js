@@ -44,9 +44,15 @@
 							options: [
 								{ label: __('Grid', 'emotio-team'), value: 'grid' },
 								{ label: __('Slider', 'emotio-team'), value: 'slider' },
-								{ label: __('List', 'emotio-team'), value: 'list' }
+								{ label: __('List', 'emotio-team'), value: 'list' },
+								{ label: __('Spotlight (featured large + grid)', 'emotio-team'), value: 'spotlight' }
 							],
 							onChange: function (v) { set({ layout: v }); }
+						}),
+						(a.layout === 'grid' || a.layout === 'list') && el(ToggleControl, {
+							label: __('Group by department', 'emotio-team'),
+							checked: a.groupBy,
+							onChange: function (v) { set({ groupBy: v }); }
 						}),
 						a.layout === 'slider' && el(SelectControl, {
 							label: __('Slider style', 'emotio-team'),
