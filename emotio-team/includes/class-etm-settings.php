@@ -122,8 +122,10 @@ class ETM_Settings {
 			$out[ $size_key ] = max( 0, min( 80, absint( $input[ $size_key ] ?? $out[ $size_key ] ) ) );
 		}
 		foreach ( array( 'name_color', 'title_color', 'bio_color', 'social_color' ) as $color_key ) {
-			$out[ $color_key ] = sanitize_hex_color( $input[ $color_key ] ?? '' ) ?: '';
+			$out[ $color_key ] = self::normalize_color( $input[ $color_key ] ?? '' );
 		}
+
+		$out['modal_sections'] = self::sanitize_modal_sections( $input );
 
 		$out['custom_fields'] = self::parse_custom_fields( $input['custom_fields_raw'] ?? null, $input['custom_fields'] ?? array() );
 
@@ -159,6 +161,69 @@ class ETM_Settings {
 		}
 
 		return (bool) apply_filters( 'etm_output_schema', $enabled );
+	}
+
+	/**
+	 * Forgiving colour sanitizer: "#111", "111111" (no hash), "black",
+	 * and rgb()/rgba() are all accepted. Returns '' for anything unsafe.
+	 */
+	public static function normalize_color( $value ) {
+		$value = strtolower( trim( (string) $value ) );
+		if ( '' === $value ) {
+			return '';
+		}
+		if ( sanitize_hex_color( $value ) ) {
+			return sanitize_hex_color( $value );
+		}
+		if ( preg_match( '/^[0-9a-f]{3}$|^[0-9a-f]{6}$|^[0-9a-f]{8}$/', $value ) ) {
+			return '#' . $value;
+		}
+		if ( preg_match( '/^[a-z]+$/', $value ) ) {
+			return $value; // CSS colour keyword (black, white, rebeccapurple…).
+		}
+		if ( preg_match( '/^rgba?\(\s*[\d.]+%?\s*,\s*[\d.]+%?\s*,\s*[\d.]+%?\s*(,\s*[\d.]+\s*)?\)$/', $value ) ) {
+			return $value;
+		}
+		return '';
+	}
+
+	/**
+	 * Sections available in the profile modal / slide-out panel.
+	 */
+	public static function modal_section_labels() {
+		return array(
+			'photo'         => __( 'Photo', 'emotio-team' ),
+			'pronouns'      => __( 'Pronouns', 'emotio-team' ),
+			'location'      => __( 'Location', 'emotio-team' ),
+			'bio'           => __( 'Biography', 'emotio-team' ),
+			'fun_fact'      => __( 'Fun fact', 'emotio-team' ),
+			'custom_fields' => __( 'Custom profile fields', 'emotio-team' ),
+			'contact'       => __( 'Email / phone buttons', 'emotio-team' ),
+			'vcard'         => __( '"Save contact" (vCard) button', 'emotio-team' ),
+			'profile_link'  => __( '"Full profile" button', 'emotio-team' ),
+			'socials'       => __( 'Social icons', 'emotio-team' ),
+		);
+	}
+
+	protected static function sanitize_modal_sections( $input ) {
+		$all = array_keys( self::modal_section_labels() );
+		if ( empty( $input['modal_sections_set'] ) ) {
+			// Form did not include the section checkboxes (e.g. programmatic
+			// save) — keep whatever is stored.
+			$current = isset( $input['modal_sections'] ) && is_array( $input['modal_sections'] ) ? $input['modal_sections'] : $all;
+			return array_values( array_intersect( $all, $current ) );
+		}
+		$picked = isset( $input['modal_sections'] ) && is_array( $input['modal_sections'] ) ? array_map( 'sanitize_key', $input['modal_sections'] ) : array();
+		return array_values( array_intersect( $all, $picked ) );
+	}
+
+	/**
+	 * Enabled profile modal/panel sections (filterable per member).
+	 */
+	public static function modal_sections( $post = null ) {
+		$stored = self::get( 'modal_sections' );
+		$sections = is_array( $stored ) ? $stored : array_keys( self::modal_section_labels() );
+		return (array) apply_filters( 'etm_modal_sections', $sections, $post );
 	}
 
 	/**
@@ -350,6 +415,15 @@ class ETM_Settings {
 						</td>
 					</tr>
 				</table>
+				<h2><?php esc_html_e( 'Profile modal / slide-out content', 'emotio-team' ); ?></h2>
+				<p class="description"><?php esc_html_e( 'Choose exactly what appears when a profile opens (modal or slide-out panel). Name and job title always show; social icons sit at the bottom.', 'emotio-team' ); ?></p>
+				<input type="hidden" name="<?php echo esc_attr( self::OPTION ); ?>[modal_sections_set]" value="1">
+				<?php $enabled_sections = self::modal_sections(); ?>
+				<p style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:6px;max-width:760px;">
+					<?php foreach ( self::modal_section_labels() as $section_key => $section_label ) : ?>
+						<label><input type="checkbox" name="<?php echo esc_attr( self::OPTION ); ?>[modal_sections][]" value="<?php echo esc_attr( $section_key ); ?>" <?php checked( in_array( $section_key, $enabled_sections, true ) ); ?>> <?php echo esc_html( $section_label ); ?></label>
+					<?php endforeach; ?>
+				</p>
 				<h2><?php esc_html_e( 'Custom profile fields', 'emotio-team' ); ?></h2>
 				<p class="description"><?php esc_html_e( 'Extra fields every team member gets — qualifications, languages, office days, anything. One per line as "Label" or "Label | key". They appear on the member edit screen, in profile modals/panels and on profile pages, and travel through CSV import/export as cf_key columns.', 'emotio-team' ); ?></p>
 				<?php

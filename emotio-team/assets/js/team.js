@@ -137,10 +137,26 @@
 	}
 
 	function openModal(item, instance) {
+		var mode = instance.getAttribute('data-link') === 'panel' ? 'panel' : 'modal';
+		var styleCss = instance.getAttribute('style') || '';
+		var member = item.getAttribute('data-member');
+
+		// Server-fetched profiles are immune to page optimisers mangling
+		// the inline <template>; the template is only the offline fallback.
+		if (member && i18n.ajaxUrl) {
+			openRemoteProfile(member, mode, item, styleCss, function () {
+				openLocalProfile(item, mode, styleCss);
+			});
+			return;
+		}
+		openLocalProfile(item, mode, styleCss);
+	}
+
+	function openLocalProfile(item, mode, styleCss) {
 		buildModal();
 		// Carry the instance's design tokens (accent, typography…) into the modal.
-		modal.style.cssText = instance.getAttribute('style') || '';
-		modal.classList.toggle('etm-modal--drawer', instance.getAttribute('data-link') === 'panel');
+		modal.style.cssText = styleCss || '';
+		modal.classList.toggle('etm-modal--drawer', mode === 'panel');
 
 		var content = modal.querySelector('.etm-modal-content');
 		content.innerHTML = '';
@@ -205,9 +221,9 @@
 
 	// Open a profile fetched from the server (triggers can live on pages
 	// with no team layout at all).
-	function showRemoteProfile(html, mode) {
+	function showRemoteProfile(html, mode, styleCss) {
 		buildModal();
-		modal.style.cssText = '';
+		modal.style.cssText = styleCss || '';
 		modal.classList.toggle('etm-modal--drawer', mode === 'panel');
 		var content = modal.querySelector('.etm-modal-content');
 		content.innerHTML = html;
@@ -227,9 +243,9 @@
 		modal.querySelector('.etm-modal-close').focus();
 	}
 
-	function openRemoteProfile(key, mode, trigger) {
+	function openRemoteProfile(key, mode, trigger, styleCss, onFail) {
 		if (profileCache[key]) {
-			showRemoteProfile(profileCache[key], mode);
+			showRemoteProfile(profileCache[key], mode, styleCss);
 			return;
 		}
 		var ajaxUrl = i18n.ajaxUrl || '/wp-admin/admin-ajax.php';
@@ -241,10 +257,16 @@
 			.then(function (data) {
 				if (data && data.success && data.data && data.data.html) {
 					profileCache[key] = data.data.html;
-					showRemoteProfile(data.data.html, mode);
+					showRemoteProfile(data.data.html, mode, styleCss);
+				} else if (onFail) {
+					onFail();
 				}
 			})
-			.catch(function () {})
+			.catch(function () {
+				if (onFail) {
+					onFail();
+				}
+			})
 			.finally(function () {
 				if (trigger) {
 					trigger.classList.remove('etm-loading');

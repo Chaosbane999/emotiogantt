@@ -369,7 +369,7 @@
 	gap: var(--etm-el-gap, 4px);
 }
 .etm--style-overlay .etm-overlay .etm-role {
-	color: #fff;
+	color: var(--etm-title-color, #fff);
 	opacity: 0.8;
 }
 .etm--style-overlay .etm-overlay .etm-socials a {
@@ -483,28 +483,47 @@
 }
 
 /* ------------------------------------------------------------------- list */
+/* List: the photo fills the card's full height on the left, details sit
+   vertically centred beside it — no floating name above the photo. */
 .etm--list .etm-grid {
 	grid-template-columns: 1fr;
 }
 .etm--list .etm-card {
-	flex-direction: row;
-	align-items: center;
-	gap: 24px;
+	display: grid;
+	grid-template-columns: minmax(140px, 220px) 1fr;
+	align-items: stretch;
 }
 .etm--list .etm-media {
-	flex: 0 0 130px;
-	width: 130px;
-	aspect-ratio: 1 / 1;
+	width: auto;
+	aspect-ratio: auto;
+	min-height: 180px;
+	height: 100%;
+	border-radius: var(--etm-radius) 0 0 var(--etm-radius);
+}
+.etm--list.etm--style-minimal .etm-media,
+.etm--list.etm--style-circle .etm-media {
 	border-radius: var(--etm-radius);
+	margin-top: 0;
 }
 .etm--list .etm-body {
-	padding: 18px 18px 18px 0;
+	padding: 22px 26px;
+	justify-content: center;
+	align-items: flex-start;
+	text-align: left;
 }
-.etm--list.etm--style-cards .etm-body {
-	padding-left: 0;
+.etm--list .etm-socials {
+	justify-content: flex-start;
 }
-.etm--list.etm--style-cards .etm-media {
-	margin: 14px 0 14px 14px;
+@media (max-width: 480px) {
+	.etm--list .etm-card {
+		grid-template-columns: 110px 1fr;
+	}
+	.etm--list .etm-media {
+		min-height: 130px;
+	}
+	.etm--list .etm-body {
+		padding: 14px 16px;
+	}
 }
 
 /* ----------------------------------------------------------------- slider */
@@ -758,8 +777,8 @@
 	margin: 0 0 14px !important;
 	text-transform: uppercase;
 	letter-spacing: 0.05em;
-	font-size: 0.85em;
-	color: var(--etm-accent, inherit);
+	font-size: var(--etm-title-size, 0.85em);
+	color: var(--etm-title-color, var(--etm-accent, inherit));
 }
 .etm-detail-meta {
 	display: flex;
@@ -876,8 +895,8 @@
 .etm-profile-role {
 	text-transform: uppercase;
 	letter-spacing: 0.05em;
-	color: var(--etm-accent, inherit);
-	font-size: 0.9em;
+	color: var(--etm-title-color, var(--etm-accent, inherit));
+	font-size: var(--etm-title-size, 0.9em);
 	margin: 0 0 18px !important;
 }
 .etm-profile-meta {

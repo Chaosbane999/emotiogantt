@@ -362,14 +362,7 @@ class ETM_Shortcode {
 	 * both). Returns '' when the value is not a safe colour.
 	 */
 	protected static function css_color( $value ) {
-		$value = trim( (string) $value );
-		if ( ! $value ) {
-			return '';
-		}
-		if ( sanitize_hex_color( $value ) ) {
-			return sanitize_hex_color( $value );
-		}
-		return preg_match( '/^rgba?\(\s*[\d.]+%?\s*,\s*[\d.]+%?\s*,\s*[\d.]+%?\s*(,\s*[\d.]+\s*)?\)$/', $value ) ? $value : '';
+		return ETM_Settings::normalize_color( $value );
 	}
 
 	/**
@@ -578,6 +571,7 @@ class ETM_Shortcode {
 			data-search="<?php echo esc_attr( strtolower( implode( ' ', array_filter( array_merge( array( $name, $job_title ), $dept_names ) ) ) ) ); ?>"
 			data-departments="<?php echo esc_attr( implode( ' ', $dept_slugs ) ); ?>"
 			data-name="<?php echo esc_attr( $name ); ?>"
+			data-member="<?php echo esc_attr( $id ); ?>"
 			data-photo="<?php echo esc_url( get_the_post_thumbnail_url( $post, 'large' ) ?: '' ); ?>">
 			<article class="etm-card etm-card--spotlight" <?php echo $is_modal ? 'data-modal-source' : ''; ?>>
 				<div class="etm-media">
@@ -714,6 +708,7 @@ class ETM_Shortcode {
 			data-search="<?php echo esc_attr( $search_blob ); ?>"
 			data-departments="<?php echo esc_attr( implode( ' ', $dept_slugs ) ); ?>"
 			data-name="<?php echo esc_attr( $name ); ?>"
+			data-member="<?php echo esc_attr( $id ); ?>"
 			data-photo="<?php echo esc_url( get_the_post_thumbnail_url( $post, 'large' ) ?: '' ); ?>">
 			<article class="etm-card" <?php echo $is_modal ? 'data-modal-source' : ''; ?>>
 				<div class="etm-media">
@@ -830,54 +825,75 @@ class ETM_Shortcode {
 	}
 
 	/**
-	 * Full profile content used inside the modal.
+	 * Full profile content used inside the modal / slide-out panel.
+	 * Which sections render is controlled under Team → Settings
+	 * ("Profile modal / slide-out content") and the etm_modal_sections
+	 * filter. Social icons always sit at the very bottom.
 	 */
 	protected static function detail( $post, $socials ) {
-		$id        = $post->ID;
+		$id       = $post->ID;
+		$sections = ETM_Settings::modal_sections( $post );
+		$on       = array_fill_keys( $sections, true );
+
 		$job_title = ETM_Meta::get( $id, 'job_title' );
 		$email     = ETM_Meta::get( $id, 'email' );
 		$phone     = ETM_Meta::get( $id, 'phone' );
+		$mobile    = ETM_Meta::get( $id, 'mobile' );
 		$location  = ETM_Meta::get( $id, 'location' );
 		$pronouns  = ETM_Meta::get( $id, 'pronouns' );
 		$fun_fact  = ETM_Meta::get( $id, 'fun_fact' );
-		$bio       = $post->post_content ? wp_kses_post( wpautop( $post->post_content ) ) : ( has_excerpt( $post ) ? '<p>' . esc_html( get_the_excerpt( $post ) ) . '</p>' : '' );
-		?>
-		<?php
-		// A hand-built <img> with a plain src: lazy-load plugins (and
-		// Salient's own lazy loading) rewrite generated thumbnail markup to
-		// data-src, which never resolves inside a cloned <template>.
+
+		// Biography: run shortcodes so builder-authored content (WPBakery
+		// rows, Salient elements) renders as text instead of raw tags,
+		// then fall back to the excerpt.
+		$bio = '';
+		if ( trim( (string) $post->post_content ) ) {
+			$bio = wp_kses_post( do_shortcode( shortcode_unautop( wpautop( $post->post_content ) ) ) );
+		}
+		if ( ! trim( wp_strip_all_tags( $bio ) ) && has_excerpt( $post ) ) {
+			$bio = '<p>' . esc_html( get_the_excerpt( $post ) ) . '</p>';
+		}
+
+		// A hand-built <img> with a plain src: lazy-load plugins rewrite
+		// generated thumbnail markup to data-src, which never resolves
+		// inside a cloned <template>.
 		$photo_url = get_the_post_thumbnail_url( $post, 'large' );
 		?>
 		<div class="etm-detail-inner">
-			<div class="etm-detail-media">
-				<?php if ( $photo_url ) : ?>
+			<?php if ( ! empty( $on['photo'] ) && $photo_url ) : ?>
+				<div class="etm-detail-media">
 					<img src="<?php echo esc_url( $photo_url ); ?>" alt="<?php echo esc_attr( get_the_title( $post ) ); ?>">
-				<?php endif; ?>
-			</div>
-			<div class="etm-detail-body">
-				<h2 class="etm-detail-name"><?php echo esc_html( get_the_title( $post ) ); ?><?php if ( $pronouns ) : ?> <span class="etm-pronouns"><?php echo esc_html( $pronouns ); ?></span><?php endif; ?></h2>
-				<?php if ( $job_title ) : ?><p class="etm-detail-role"><?php echo esc_html( $job_title ); ?></p><?php endif; ?>
-				<?php if ( $location ) : ?><p class="etm-detail-meta"><?php echo self::icon( 'pin' ); // phpcs:ignore ?> <?php echo esc_html( $location ); ?></p><?php endif; ?>
-				<?php if ( $bio ) : ?><div class="etm-detail-bio"><?php echo $bio; // phpcs:ignore WordPress.Security.EscapeOutput ?></div><?php endif; ?>
-				<?php self::custom_fields_list( $id ); ?>
-				<?php if ( $fun_fact ) : ?><p class="etm-fun-fact"><strong><?php esc_html_e( 'Fun fact:', 'emotio-team' ); ?></strong> <?php echo esc_html( $fun_fact ); ?></p><?php endif; ?>
-				<div class="etm-detail-actions">
-					<?php if ( $email ) : ?>
-						<a class="etm-btn" href="mailto:<?php echo esc_attr( $email ); ?>"><?php echo self::icon( 'email' ); // phpcs:ignore ?><?php esc_html_e( 'Email', 'emotio-team' ); ?></a>
-					<?php endif; ?>
-					<?php if ( $phone ) : ?>
-						<a class="etm-btn" href="tel:<?php echo esc_attr( preg_replace( '/[^0-9+]/', '', $phone ) ); ?>"><?php echo self::icon( 'phone' ); // phpcs:ignore ?><?php echo esc_html( $phone ); ?></a>
-					<?php endif; ?>
-					<?php $mobile = ETM_Meta::get( $id, 'mobile' ); ?>
-					<?php if ( $mobile ) : ?>
-						<a class="etm-btn" href="tel:<?php echo esc_attr( preg_replace( '/[^0-9+]/', '', $mobile ) ); ?>"><?php echo self::icon( 'phone' ); // phpcs:ignore ?><?php echo esc_html( $mobile ); ?></a>
-					<?php endif; ?>
-					<a class="etm-btn etm-btn--ghost" href="<?php echo esc_url( ETM_Single::vcard_url( $id ) ); ?>"><?php echo self::icon( 'download' ); // phpcs:ignore ?><?php esc_html_e( 'Save contact', 'emotio-team' ); ?></a>
-					<?php if ( ETM_Settings::get( 'enable_single' ) ) : ?>
-						<a class="etm-btn etm-btn--ghost" href="<?php echo esc_url( get_permalink( $post ) ); ?>"><?php esc_html_e( 'Full profile', 'emotio-team' ); ?></a>
-					<?php endif; ?>
 				</div>
-				<?php if ( $socials ) : ?><?php self::social_row( $socials ); ?><?php endif; ?>
+			<?php endif; ?>
+			<div class="etm-detail-body">
+				<h2 class="etm-detail-name"><?php echo esc_html( get_the_title( $post ) ); ?><?php if ( ! empty( $on['pronouns'] ) && $pronouns ) : ?> <span class="etm-pronouns"><?php echo esc_html( $pronouns ); ?></span><?php endif; ?></h2>
+				<?php if ( $job_title ) : ?><p class="etm-detail-role"><?php echo esc_html( $job_title ); ?></p><?php endif; ?>
+				<?php if ( ! empty( $on['location'] ) && $location ) : ?><p class="etm-detail-meta"><?php echo self::icon( 'pin' ); // phpcs:ignore ?> <?php echo esc_html( $location ); ?></p><?php endif; ?>
+				<?php if ( ! empty( $on['bio'] ) && $bio ) : ?><div class="etm-detail-bio"><?php echo $bio; // phpcs:ignore WordPress.Security.EscapeOutput ?></div><?php endif; ?>
+				<?php if ( ! empty( $on['custom_fields'] ) ) { self::custom_fields_list( $id ); } ?>
+				<?php if ( ! empty( $on['fun_fact'] ) && $fun_fact ) : ?><p class="etm-fun-fact"><strong><?php esc_html_e( 'Fun fact:', 'emotio-team' ); ?></strong> <?php echo esc_html( $fun_fact ); ?></p><?php endif; ?>
+				<?php if ( ! empty( $on['contact'] ) || ! empty( $on['vcard'] ) || ! empty( $on['profile_link'] ) ) : ?>
+					<div class="etm-detail-actions">
+						<?php if ( ! empty( $on['contact'] ) ) : ?>
+							<?php if ( $email ) : ?>
+								<a class="etm-btn" href="mailto:<?php echo esc_attr( $email ); ?>"><?php echo self::icon( 'email' ); // phpcs:ignore ?><?php esc_html_e( 'Email', 'emotio-team' ); ?></a>
+							<?php endif; ?>
+							<?php if ( $phone ) : ?>
+								<a class="etm-btn" href="tel:<?php echo esc_attr( preg_replace( '/[^0-9+]/', '', $phone ) ); ?>"><?php echo self::icon( 'phone' ); // phpcs:ignore ?><?php echo esc_html( $phone ); ?></a>
+							<?php endif; ?>
+							<?php if ( $mobile ) : ?>
+								<a class="etm-btn" href="tel:<?php echo esc_attr( preg_replace( '/[^0-9+]/', '', $mobile ) ); ?>"><?php echo self::icon( 'phone' ); // phpcs:ignore ?><?php echo esc_html( $mobile ); ?></a>
+							<?php endif; ?>
+						<?php endif; ?>
+						<?php if ( ! empty( $on['vcard'] ) ) : ?>
+							<a class="etm-btn etm-btn--ghost" href="<?php echo esc_url( ETM_Single::vcard_url( $id ) ); ?>"><?php echo self::icon( 'download' ); // phpcs:ignore ?><?php esc_html_e( 'Save contact', 'emotio-team' ); ?></a>
+						<?php endif; ?>
+						<?php if ( ! empty( $on['profile_link'] ) && ETM_Settings::get( 'enable_single' ) ) : ?>
+							<a class="etm-btn etm-btn--ghost" href="<?php echo esc_url( get_permalink( $post ) ); ?>"><?php esc_html_e( 'Full profile', 'emotio-team' ); ?></a>
+						<?php endif; ?>
+					</div>
+				<?php endif; ?>
+				<?php if ( ! empty( $on['socials'] ) && $socials ) : ?><?php self::social_row( $socials ); ?><?php endif; ?>
 			</div>
 		</div>
 		<?php
