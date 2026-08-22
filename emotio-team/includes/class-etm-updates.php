@@ -123,7 +123,7 @@ class ETM_Updates {
 		}
 
 		return (object) array(
-			'name'          => 'Emotio Team',
+			'name'          => 'Emotio Team Pro',
 			'slug'          => 'emotio-team',
 			'version'       => $manifest['version'],
 			'author'        => '<a href="https://emotio-design-group.co.uk">Emotio Design Group</a>',

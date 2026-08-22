@@ -1,0 +1,8 @@
+{
+	"version": "1.6.0",
+	"package": "https://emotio-design-group.co.uk/updates/emotio-team-1.6.0.zip",
+	"requires": "5.8",
+	"requires_php": "7.4",
+	"tested": "6.7",
+	"changelog": "<h4>1.6.0 &mdash; Security release</h4><ul><li>CSV export now neutralises formula-injection characters, and import strips the guard so values round-trip losslessly.</li><li>Member contact details (email, phone, mobile, social links) are no longer exposed through the public REST API.</li><li>The vCard endpoint honours the profile-content settings: 404 when &ldquo;Save contact&rdquo; is disabled, contact details omitted when contact display is off. Carriage returns are stripped from vCard values.</li><li>The public profile endpoint is rate-limited per IP (120 requests per 5 minutes).</li><li>Audit confirmed: nonces and capability checks on every state-changing action, prepared SQL throughout, escaped output, validated uploads, HTTPS-only update packages.</li></ul><h4>1.5.7</h4><ul><li>Renamed to Emotio Team Pro; the builder element category is now &ldquo;Team Pro&rdquo;.</li><li>An H1 at the top of a member&rsquo;s biography renders as a heading in the profile (demoted to H2), with proper styles for H2/H3/H4 inside the bio.</li></ul><h4>1.5.6</h4><ul><li>Fixed biography content staying invisible inside the profile modal and slide-out panel on Salient sites, where builder entrance animations never trigger inside an injected overlay.</li></ul>"
+}
