@@ -4,7 +4,7 @@ Tags: team, staff, team members, salient, slider, grid, people
 Requires at least: 5.8
 Tested up to: 6.7
 Requires PHP: 7.4
-Stable tag: 1.5.1
+Stable tag: 1.5.2
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -93,6 +93,10 @@ Copy `templates/single-team_member.php` or `templates/archive-team_member.php` i
 The plugin keeps working. An expired or missing license only surfaces a notice on the Team admin screens and switches the `etm_is_licensed` filter to false (updates and support are tied to an active license).
 
 == Changelog ==
+
+= 1.5.2 =
+* Fixed: invisible white-on-white text. Sites with a white/near-white accent colour rendered job titles and the profile modal's contact buttons as white text on white — which also looked like an "empty" slide-out. Buttons and active filter chips now compute a readable text colour from the accent (--etm-on-accent), and when both the accent and card background are near-white, job titles automatically fall back to a dark neutral instead of vanishing. An explicit title colour always wins.
+
 
 = 1.5.1 =
 * New: choose exactly what the profile modal / slide-out shows — Team → Settings → "Profile modal / slide-out content" has checkboxes for photo, pronouns, location, biography, fun fact, custom fields, contact buttons, vCard, full-profile button and social icons (socials always render last, at the bottom). Filterable per member via etm_modal_sections.

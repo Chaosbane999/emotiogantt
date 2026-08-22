@@ -274,7 +274,12 @@ class ETM_Shortcode {
 
 		$style_attr = '';
 		if ( self::css_color( $a['accent'] ) ) {
-			$style_attr .= '--etm-accent:' . self::css_color( $a['accent'] ) . ';';
+			$accent      = self::css_color( $a['accent'] );
+			$style_attr .= '--etm-accent:' . $accent . ';';
+			$style_attr .= '--etm-on-accent:' . ETM_Settings::contrast_color( $accent ) . ';';
+			$accent_lum  = ETM_Settings::luminance( $accent );
+			$card_lum    = ETM_Settings::luminance( ETM_Settings::get( 'card_bg' ) );
+			$style_attr .= ( null !== $accent_lum && null !== $card_lum && $accent_lum > 200 && $card_lum > 200 ) ? '--etm-heading-accent:#1f2937;' : '--etm-heading-accent:' . $accent . ';';
 		}
 		if ( '' !== $a['gap'] ) {
 			$style_attr .= '--etm-gap:' . absint( $a['gap'] ) . 'px;';

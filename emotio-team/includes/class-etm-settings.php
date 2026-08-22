@@ -188,6 +188,33 @@ class ETM_Settings {
 	}
 
 	/**
+	 * Perceived brightness of a colour, 0–255 (null when not computable).
+	 */
+	public static function luminance( $color ) {
+		$color    = self::normalize_color( $color );
+		$keywords = array( 'white' => '#ffffff', 'black' => '#000000', 'ivory' => '#fffff0', 'snow' => '#fffafa' );
+		if ( isset( $keywords[ $color ] ) ) {
+			$color = $keywords[ $color ];
+		}
+		if ( ! preg_match( '/^#([0-9a-f]{3}|[0-9a-f]{6})$/i', (string) $color ) ) {
+			return null;
+		}
+		$hex = ltrim( $color, '#' );
+		if ( 3 === strlen( $hex ) ) {
+			$hex = $hex[0] . $hex[0] . $hex[1] . $hex[1] . $hex[2] . $hex[2];
+		}
+		return ( hexdec( substr( $hex, 0, 2 ) ) * 299 + hexdec( substr( $hex, 2, 2 ) ) * 587 + hexdec( substr( $hex, 4, 2 ) ) * 114 ) / 1000;
+	}
+
+	/**
+	 * Readable text colour on top of the given colour.
+	 */
+	public static function contrast_color( $color ) {
+		$lum = self::luminance( $color );
+		return ( null !== $lum && $lum > 150 ) ? '#1f2937' : '#ffffff';
+	}
+
+	/**
 	 * Sections available in the profile modal / slide-out panel.
 	 */
 	public static function modal_section_labels() {
@@ -303,6 +330,16 @@ class ETM_Settings {
 		$vars .= $s['text_color'] ? '--etm-text:' . $s['text_color'] . ';' : '';
 		$vars .= '--etm-el-gap:' . self::spacing_value( $s['spacing'] ) . ';';
 		$vars .= '--etm-social-size:' . max( 10, (int) $s['social_size'] ) . 'px;';
+
+		// Contrast guardrails: buttons/chips always get readable text on the
+		// accent, and a near-white accent on a near-white card can't render
+		// job titles invisibly — they drop to a dark neutral instead.
+		$vars .= '--etm-on-accent:' . self::contrast_color( $s['accent'] ) . ';';
+		$accent_lum = self::luminance( $s['accent'] );
+		$card_lum   = self::luminance( $s['card_bg'] );
+		if ( null !== $accent_lum && null !== $card_lum && $accent_lum > 200 && $card_lum > 200 ) {
+			$vars .= '--etm-heading-accent:#1f2937;';
+		}
 
 		foreach ( array( 'name', 'title', 'bio' ) as $el ) {
 			if ( (int) $s[ $el . '_size' ] > 0 ) {
