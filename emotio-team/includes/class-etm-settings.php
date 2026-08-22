@@ -50,6 +50,7 @@ class ETM_Settings {
 			'enable_single'  => 1,
 			'enable_archive' => 1,
 			'enable_schema'  => 1,
+			'global_triggers' => 1,
 			'custom_css'     => '',
 		);
 	}
@@ -129,7 +130,8 @@ class ETM_Settings {
 		$out['archive_slug']   = sanitize_title( $input['archive_slug'] ?? 'team' ) ?: 'team';
 		$out['enable_single']  = empty( $input['enable_single'] ) ? 0 : 1;
 		$out['enable_archive'] = empty( $input['enable_archive'] ) ? 0 : 1;
-		$out['enable_schema']  = empty( $input['enable_schema'] ) ? 0 : 1;
+		$out['enable_schema']   = empty( $input['enable_schema'] ) ? 0 : 1;
+		$out['global_triggers'] = empty( $input['global_triggers'] ) ? 0 : 1;
 		$out['custom_css']     = wp_strip_all_tags( $input['custom_css'] ?? '' );
 
 		// Slug or visibility changes need a rewrite flush on the next load.
@@ -396,6 +398,11 @@ class ETM_Settings {
 					<tr>
 						<th scope="row"><?php esc_html_e( 'Team archive page', 'emotio-team' ); ?></th>
 						<td><label><input type="checkbox" name="<?php echo esc_attr( self::OPTION ); ?>[enable_archive]" value="1" <?php checked( $s['enable_archive'], 1 ); ?>> <?php esc_html_e( 'Enable the built-in searchable team listing page', 'emotio-team' ); ?></label></td>
+					</tr>
+					<tr>
+						<th scope="row"><?php esc_html_e( 'Profile triggers', 'emotio-team' ); ?></th>
+						<td><label><input type="checkbox" name="<?php echo esc_attr( self::OPTION ); ?>[global_triggers]" value="1" <?php checked( $s['global_triggers'], 1 ); ?>> <?php esc_html_e( 'Let any element open a team profile', 'emotio-team' ); ?></label>
+						<p class="description"><?php esc_html_e( 'Give any element the class etm-profile-ID (modal) or etm-panel-ID (slide-out), or link it to #etm-profile-ID — the member ID is shown in the Team list. Salient Button, Image and Icon elements also get a "Team Profile" tab in their settings. Untick to load trigger assets only on pages with team layouts.', 'emotio-team' ); ?></p></td>
 					</tr>
 					<tr>
 						<th scope="row"><?php esc_html_e( 'Structured data', 'emotio-team' ); ?></th>

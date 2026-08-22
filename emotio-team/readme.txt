@@ -4,7 +4,7 @@ Tags: team, staff, team members, salient, slider, grid, people
 Requires at least: 5.8
 Tested up to: 6.7
 Requires PHP: 7.4
-Stable tag: 1.3.0
+Stable tag: 1.4.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -31,7 +31,9 @@ Emotio Team gives a Salient (or any WordPress) site a complete, beautifully desi
 * **Spotlight layout** (featured members large, the rest in a grid) and **group-by-department sections** with per-department headings.
 * **Grid, slider or list** deployment. The slider is dependency-free, touch-native (CSS scroll-snap), keyboard accessible, with arrows, dots and optional autoplay.
 * Filter any placement by **department, skill/tag, specific IDs or Featured** members.
-* Optional front-end **live search** and **department filter chips** on any placement.
+* Optional front-end **live search** and **department filter chips** on any placement — plus standalone **Team Search Bar** and **Department Filter** elements that control any team layout on the page.
+* A dedicated **"Emotio" category** in Salient's builder, with a **Team Member Card** element for single profiles.
+* **Profile triggers on any element**: Salient Buttons/Images/Icons get a "Team Profile" tab, and any element with the class `etm-profile-ID` / `etm-panel-ID` (or a `#etm-profile-ID` link) opens that member's modal or panel — even on pages with no team layout.
 * Built-in searchable **/team/ archive page** and individual profile pages (both optional).
 
 **Design flexibility**
@@ -89,6 +91,11 @@ Copy `templates/single-team_member.php` or `templates/archive-team_member.php` i
 The plugin keeps working. An expired or missing license only surfaces a notice on the Team admin screens and switches the `etm_is_licensed` filter to false (updates and support are tied to an active license).
 
 == Changelog ==
+
+= 1.4.0 =
+* New: dedicated "Emotio" category in Salient's page builder with three extra elements — Team Member Card (one person's card anywhere), Team Search Bar and Team Department Filter (standalone controls that drive any team layout on the page, targetable via CSS selector).
+* New: Salient's own Button, Single Image, Icon and CTA elements gain a "Team Profile" tab — pick a member and clicking that element opens their profile modal or slide-out panel.
+* New: universal profile triggers on ANY element — add the class etm-profile-ID (modal) or etm-panel-ID (panel), or link to #etm-profile-ID / #etm-panel-ID (member IDs shown in the Team admin list; slugs work too). Profiles are fetched on demand, so triggers work on pages with no team layout at all. Toggle site-wide loading under Team → Settings.
 
 = 1.3.0 =
 * New: native Elementor widget (Elementor 3.5+) with the full control set — layout, slider style, grouping, design, typography — rendered by the same engine as the shortcode, block and WPBakery element.

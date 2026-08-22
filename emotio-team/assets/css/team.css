@@ -891,6 +891,29 @@
 	}
 }
 
+/* ----------------------------------------------------- profile triggers */
+.etm-vc-trigger {
+	display: contents;
+	cursor: pointer;
+}
+[data-etm-profile],
+[class*="etm-profile-"],
+[class*="etm-panel-"] {
+	cursor: pointer;
+}
+.etm-loading {
+	opacity: 0.6;
+	pointer-events: none;
+}
+
+/* -------------------------------------------- standalone search / filter */
+.etm-remote {
+	margin: 0 0 18px;
+}
+.etm-remote .etm-search {
+	max-width: 340px;
+}
+
 /* ------------------------------------------------------------------ empty */
 .etm--empty {
 	padding: 24px;

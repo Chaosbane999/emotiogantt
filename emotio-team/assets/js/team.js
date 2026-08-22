@@ -199,6 +199,174 @@
 		}
 	}
 
+	/* --------------------------------------------- remote profile triggers */
+
+	var profileCache = {};
+
+	// Open a profile fetched from the server (triggers can live on pages
+	// with no team layout at all).
+	function showRemoteProfile(html, mode) {
+		buildModal();
+		modal.style.cssText = '';
+		modal.classList.toggle('etm-modal--drawer', mode === 'panel');
+		var content = modal.querySelector('.etm-modal-content');
+		content.innerHTML = html;
+		fixLazyImages(content);
+
+		var name = modal.querySelector('.etm-detail-name');
+		if (name) {
+			name.id = 'etm-modal-title';
+			modal.setAttribute('aria-labelledby', 'etm-modal-title');
+		}
+
+		lastTrigger = document.activeElement;
+		modal.hidden = false;
+		void modal.offsetWidth;
+		modal.classList.add('is-open');
+		document.body.style.overflow = 'hidden';
+		modal.querySelector('.etm-modal-close').focus();
+	}
+
+	function openRemoteProfile(key, mode, trigger) {
+		if (profileCache[key]) {
+			showRemoteProfile(profileCache[key], mode);
+			return;
+		}
+		var ajaxUrl = i18n.ajaxUrl || '/wp-admin/admin-ajax.php';
+		if (trigger) {
+			trigger.classList.add('etm-loading');
+		}
+		fetch(ajaxUrl + '?action=etm_profile&member=' + encodeURIComponent(key))
+			.then(function (response) { return response.json(); })
+			.then(function (data) {
+				if (data && data.success && data.data && data.data.html) {
+					profileCache[key] = data.data.html;
+					showRemoteProfile(data.data.html, mode);
+				}
+			})
+			.catch(function () {})
+			.finally(function () {
+				if (trigger) {
+					trigger.classList.remove('etm-loading');
+				}
+			});
+	}
+
+	// One document-level listener covers every kind of trigger:
+	// data-etm-profile spans (Salient builder elements), etm-profile-* /
+	// etm-panel-* classes, and #etm-profile-* / #etm-panel-* anchors.
+	function resolveTrigger(start) {
+		var el = start.closest('[data-etm-profile]');
+		if (el) {
+			return { el: el, key: el.getAttribute('data-etm-profile'), mode: el.getAttribute('data-etm-mode') === 'panel' ? 'panel' : 'modal', isLink: false };
+		}
+		el = start.closest('a[href*="#etm-profile-"], a[href*="#etm-panel-"]');
+		if (el) {
+			var match = (el.getAttribute('href') || '').match(/#etm-(profile|panel)-([\w-]+)/);
+			if (match) {
+				return { el: el, key: match[2], mode: match[1] === 'panel' ? 'panel' : 'modal', isLink: true };
+			}
+		}
+		el = start.closest('[class*="etm-profile-"], [class*="etm-panel-"]');
+		if (el && !el.closest('[data-etm]')) {
+			var cls = (' ' + el.className + ' ').match(/\setm-(profile|panel)-([\w-]+)\s/);
+			if (cls) {
+				return { el: el, key: cls[2], mode: cls[1] === 'panel' ? 'panel' : 'modal', isLink: el.tagName === 'A' };
+			}
+		}
+		return null;
+	}
+
+	function bindGlobalTriggers() {
+		if (window._etmTriggersBound) {
+			return;
+		}
+		window._etmTriggersBound = true;
+		document.addEventListener('click', function (e) {
+			if (!(e.target instanceof Element)) {
+				return;
+			}
+			var trigger = resolveTrigger(e.target);
+			if (!trigger || !trigger.key) {
+				return;
+			}
+			e.preventDefault();
+			openRemoteProfile(trigger.key, trigger.mode, trigger.el);
+		});
+		document.addEventListener('keydown', function (e) {
+			if ((e.key !== 'Enter' && e.key !== ' ') || !(e.target instanceof Element)) {
+				return;
+			}
+			var el = e.target.closest('.etm-vc-trigger[data-etm-profile]');
+			if (el) {
+				e.preventDefault();
+				openRemoteProfile(el.getAttribute('data-etm-profile'), el.getAttribute('data-etm-mode') === 'panel' ? 'panel' : 'modal', el);
+			}
+		});
+	}
+
+	/* ------------------------------------ standalone search & filter */
+
+	function remoteTarget(control) {
+		var selector = control.getAttribute('data-target');
+		if (selector) {
+			try {
+				var explicit = document.querySelector(selector);
+				if (explicit && explicit.hasAttribute('data-etm')) {
+					return explicit;
+				}
+				if (explicit) {
+					return explicit.querySelector('[data-etm]');
+				}
+			} catch (err) { /* bad selector — fall through */ }
+		}
+		return document.querySelector('[data-etm]');
+	}
+
+	function initRemoteControls() {
+		document.querySelectorAll('[data-etm-remote-search]').forEach(function (control) {
+			if (control._etmBound) {
+				return;
+			}
+			control._etmBound = true;
+			var input = control.querySelector('input');
+			var timer = null;
+			input.addEventListener('input', function () {
+				clearTimeout(timer);
+				timer = setTimeout(function () {
+					var instance = remoteTarget(control);
+					if (instance && instance._etmReady) {
+						instance._searchTerm = input.value;
+						applyFilters(instance);
+					}
+				}, 120);
+			});
+		});
+
+		document.querySelectorAll('[data-etm-remote-filter]').forEach(function (control) {
+			if (control._etmBound) {
+				return;
+			}
+			control._etmBound = true;
+			var chips = control.querySelectorAll('.etm-chip');
+			chips.forEach(function (chip) {
+				chip.addEventListener('click', function () {
+					chips.forEach(function (other) {
+						other.classList.remove('is-active');
+						other.setAttribute('aria-pressed', 'false');
+					});
+					chip.classList.add('is-active');
+					chip.setAttribute('aria-pressed', 'true');
+					var instance = remoteTarget(control);
+					if (instance && instance._etmReady) {
+						instance._activeFilter = chip.getAttribute('data-filter');
+						applyFilters(instance);
+					}
+				});
+			});
+		});
+	}
+
 	/* -------------------------------------------------- filter + search */
 
 	function applyFilters(instance) {
@@ -566,6 +734,8 @@
 
 	function initAll() {
 		document.querySelectorAll('[data-etm]').forEach(initInstance);
+		initRemoteControls();
+		bindGlobalTriggers();
 	}
 
 	if (document.readyState === 'loading') {

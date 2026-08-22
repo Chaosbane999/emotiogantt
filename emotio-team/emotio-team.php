@@ -3,7 +3,7 @@
  * Plugin Name:       Emotio Team
  * Plugin URI:        https://github.com/chaosbane999/emotiogantt
  * Description:       Best-in-class team member management for Salient-built WordPress sites. Grid and slider layouts, live search and department filtering, WPBakery element, Gutenberg block, profile modals, vCards, Person schema and deep design controls.
- * Version:           1.3.0
+ * Version:           1.4.0
  * Requires at least: 5.8
  * Requires PHP:      7.4
  * Author:            Emotio Design Group
@@ -17,7 +17,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'ETM_VERSION', '1.3.0' );
+define( 'ETM_VERSION', '1.4.0' );
 define( 'ETM_FILE', __FILE__ );
 define( 'ETM_DIR', plugin_dir_path( __FILE__ ) );
 define( 'ETM_URL', plugin_dir_url( __FILE__ ) );
@@ -32,6 +32,7 @@ require_once ETM_DIR . 'includes/class-etm-shortcode.php';
 require_once ETM_DIR . 'includes/class-etm-block.php';
 require_once ETM_DIR . 'includes/class-etm-wpbakery.php';
 require_once ETM_DIR . 'includes/class-etm-elementor.php';
+require_once ETM_DIR . 'includes/class-etm-triggers.php';
 require_once ETM_DIR . 'includes/class-etm-updates.php';
 require_once ETM_DIR . 'includes/class-etm-single.php';
 
@@ -51,6 +52,7 @@ function etm_init() {
 	ETM_Block::init();
 	ETM_WPBakery::init();
 	ETM_Elementor::init();
+	ETM_Triggers::init();
 	ETM_Updates::init();
 	ETM_Single::init();
 }

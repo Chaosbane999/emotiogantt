@@ -18,7 +18,128 @@ class ETM_Shortcode {
 
 	public static function init() {
 		add_shortcode( 'emotio_team', array( __CLASS__, 'render' ) );
+		add_shortcode( 'emotio_team_member', array( __CLASS__, 'render_member' ) );
+		add_shortcode( 'emotio_team_search', array( __CLASS__, 'render_search' ) );
+		add_shortcode( 'emotio_team_filter', array( __CLASS__, 'render_filter' ) );
 		add_action( 'wp_enqueue_scripts', array( __CLASS__, 'register_assets' ) );
+	}
+
+	/**
+	 * [emotio_team_member id="…"] — one member's card, droppable anywhere.
+	 */
+	public static function render_member( $atts ) {
+		$a = shortcode_atts(
+			array(
+				'id'          => '',
+				'style'       => ETM_Settings::get( 'style' ),
+				'hover'       => ETM_Settings::get( 'hover' ),
+				'image_ratio' => ETM_Settings::get( 'image_ratio' ),
+				'link'        => ETM_Settings::get( 'link' ),
+				'show_social' => 'yes',
+				'show_bio'    => 'yes',
+				'accent'      => '',
+				'class'       => '',
+			),
+			(array) $atts,
+			'emotio_team_member'
+		);
+		if ( ! absint( $a['id'] ) ) {
+			return '';
+		}
+		return self::render(
+			array(
+				'ids'         => absint( $a['id'] ),
+				'limit'       => 1,
+				'columns'     => 1,
+				'layout'      => 'grid',
+				'style'       => $a['style'],
+				'hover'       => $a['hover'],
+				'image_ratio' => $a['image_ratio'],
+				'link'        => $a['link'],
+				'show_social' => $a['show_social'],
+				'show_bio'    => $a['show_bio'],
+				'accent'      => $a['accent'],
+				'class'       => trim( 'etm--one ' . $a['class'] ),
+			)
+		);
+	}
+
+	/**
+	 * [emotio_team_search] — a standalone live-search box that drives a
+	 * team layout elsewhere on the page (first one by default, or a CSS
+	 * selector via target="").
+	 */
+	public static function render_search( $atts ) {
+		$a = shortcode_atts(
+			array(
+				'target'      => '',
+				'placeholder' => __( 'Search name, role, skill…', 'emotio-team' ),
+			),
+			(array) $atts,
+			'emotio_team_search'
+		);
+		self::enqueue_assets();
+		ob_start();
+		?>
+		<div class="etm etm-remote" data-etm-remote-search data-target="<?php echo esc_attr( $a['target'] ); ?>">
+			<label class="etm-search">
+				<?php echo self::icon( 'search' ); // phpcs:ignore ?>
+				<span class="screen-reader-text"><?php esc_html_e( 'Search the team', 'emotio-team' ); ?></span>
+				<input type="search" placeholder="<?php echo esc_attr( $a['placeholder'] ); ?>" autocomplete="off">
+			</label>
+		</div>
+		<?php
+		return ob_get_clean();
+	}
+
+	/**
+	 * [emotio_team_filter] — standalone department chips driving a team
+	 * layout elsewhere on the page.
+	 */
+	public static function render_filter( $atts ) {
+		$a = shortcode_atts(
+			array(
+				'target'      => '',
+				'departments' => '',
+			),
+			(array) $atts,
+			'emotio_team_filter'
+		);
+
+		$args = array(
+			'taxonomy'   => ETM_CPT::TAX_DEPT,
+			'hide_empty' => true,
+		);
+		if ( $a['departments'] ) {
+			$args['slug'] = array_filter( array_map( 'sanitize_title', explode( ',', $a['departments'] ) ) );
+		}
+		$terms = get_terms( $args );
+		if ( is_wp_error( $terms ) || ! $terms ) {
+			return '';
+		}
+
+		self::enqueue_assets();
+		ob_start();
+		?>
+		<div class="etm etm-remote" data-etm-remote-filter data-target="<?php echo esc_attr( $a['target'] ); ?>">
+			<div class="etm-filters" role="group" aria-label="<?php esc_attr_e( 'Filter by department', 'emotio-team' ); ?>">
+				<button type="button" class="etm-chip is-active" data-filter="*" aria-pressed="true"><?php esc_html_e( 'All', 'emotio-team' ); ?></button>
+				<?php foreach ( $terms as $term ) : ?>
+					<button type="button" class="etm-chip" data-filter="<?php echo esc_attr( $term->slug ); ?>" aria-pressed="false"><?php echo esc_html( $term->name ); ?></button>
+				<?php endforeach; ?>
+			</div>
+		</div>
+		<?php
+		return ob_get_clean();
+	}
+
+	/**
+	 * A member's full profile markup (used by the AJAX trigger endpoint).
+	 */
+	public static function detail_html( $post ) {
+		ob_start();
+		self::detail( $post, ETM_Meta::socials( $post->ID ) );
+		return ob_get_clean();
 	}
 
 	public static function register_assets() {
@@ -33,6 +154,7 @@ class ETM_Shortcode {
 				'noResults'  => __( 'No team members match your search.', 'emotio-team' ),
 				'prev'       => __( 'Previous', 'emotio-team' ),
 				'next'       => __( 'Next', 'emotio-team' ),
+				'ajaxUrl'    => admin_url( 'admin-ajax.php' ),
 			)
 		);
 	}

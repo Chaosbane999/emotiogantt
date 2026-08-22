@@ -34,6 +34,7 @@ class ETM_Admin {
 			'etm_email'      => __( 'Email', 'emotio-team' ),
 			'taxonomy-team_department' => __( 'Department', 'emotio-team' ),
 			'etm_featured'   => '★',
+			'etm_id'         => __( 'ID', 'emotio-team' ),
 			'etm_order'      => __( 'Order', 'emotio-team' ),
 			'date'           => $columns['date'],
 		);
@@ -60,6 +61,9 @@ class ETM_Admin {
 				break;
 			case 'etm_featured':
 				echo ETM_Meta::get( $post_id, 'featured' ) ? '<span style="color:#dba617;">★</span>' : '';
+				break;
+			case 'etm_id':
+				echo '<code title="' . esc_attr__( 'Use in triggers: class etm-profile-ID or link #etm-profile-ID', 'emotio-team' ) . '">' . esc_html( $post_id ) . '</code>';
 				break;
 			case 'etm_order':
 				$post = get_post( $post_id );

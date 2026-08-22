@@ -39,7 +39,7 @@ class ETM_WPBakery {
 				'name'        => __( 'Team Members', 'emotio-team' ),
 				'base'        => 'emotio_team',
 				'icon'        => 'dashicons dashicons-groups',
-				'category'    => __( 'Content', 'js_composer' ),
+				'category'    => 'Emotio',
 				'description' => __( 'Grid or slider of team members', 'emotio-team' ),
 				'params'      => array(
 					array(
@@ -220,6 +220,108 @@ class ETM_WPBakery {
 					array( 'type' => 'colorpicker', 'heading' => __( 'Snippet colour', 'emotio-team' ), 'param_name' => 'bio_color', 'group' => __( 'Typography', 'emotio-team' ) ),
 					array( 'type' => 'textfield', 'heading' => __( 'Social icon size (px)', 'emotio-team' ), 'param_name' => 'social_size', 'group' => __( 'Typography', 'emotio-team' ) ),
 					array( 'type' => 'colorpicker', 'heading' => __( 'Social icon colour', 'emotio-team' ), 'param_name' => 'social_color', 'group' => __( 'Typography', 'emotio-team' ) ),
+				),
+			)
+		);
+
+		$members = class_exists( 'ETM_Triggers' ) ? ETM_Triggers::members_dropdown() : array();
+
+		vc_map(
+			array(
+				'name'        => __( 'Team Member Card', 'emotio-team' ),
+				'base'        => 'emotio_team_member',
+				'icon'        => 'dashicons dashicons-id-alt',
+				'category'    => 'Emotio',
+				'description' => __( 'One member\'s card, anywhere on a page', 'emotio-team' ),
+				'params'      => array(
+					array(
+						'type'       => 'dropdown',
+						'heading'    => __( 'Team member', 'emotio-team' ),
+						'param_name' => 'id',
+						'value'      => $members,
+						'admin_label' => true,
+					),
+					array(
+						'type'       => 'dropdown',
+						'heading'    => __( 'Card style', 'emotio-team' ),
+						'param_name' => 'style',
+						'value'      => array(
+							__( 'Cards', 'emotio-team' )           => 'cards',
+							__( 'Minimal', 'emotio-team' )         => 'minimal',
+							__( 'Image overlay', 'emotio-team' )   => 'overlay',
+							__( 'Circle portrait', 'emotio-team' ) => 'circle',
+						),
+					),
+					array(
+						'type'       => 'dropdown',
+						'heading'    => __( 'Card click', 'emotio-team' ),
+						'param_name' => 'link',
+						'value'      => array(
+							__( 'Open profile modal', 'emotio-team' )      => 'modal',
+							__( 'Slide-out profile panel', 'emotio-team' ) => 'panel',
+							__( 'Go to profile page', 'emotio-team' )      => 'page',
+							__( 'Not clickable', 'emotio-team' )           => 'none',
+						),
+					),
+					array(
+						'type'       => 'checkbox',
+						'heading'    => '',
+						'param_name' => 'show_bio',
+						'value'      => array( __( 'Show short bio', 'emotio-team' ) => 'yes' ),
+						'std'        => 'yes',
+					),
+					array(
+						'type'       => 'colorpicker',
+						'heading'    => __( 'Accent colour override', 'emotio-team' ),
+						'param_name' => 'accent',
+					),
+				),
+			)
+		);
+
+		vc_map(
+			array(
+				'name'        => __( 'Team Search Bar', 'emotio-team' ),
+				'base'        => 'emotio_team_search',
+				'icon'        => 'dashicons dashicons-search',
+				'category'    => 'Emotio',
+				'description' => __( 'Live search box that filters a team layout on the page', 'emotio-team' ),
+				'params'      => array(
+					array(
+						'type'        => 'textfield',
+						'heading'     => __( 'Placeholder', 'emotio-team' ),
+						'param_name'  => 'placeholder',
+					),
+					array(
+						'type'        => 'textfield',
+						'heading'     => __( 'Target (CSS selector)', 'emotio-team' ),
+						'param_name'  => 'target',
+						'description' => __( 'Leave empty to control the first team layout on the page.', 'emotio-team' ),
+					),
+				),
+			)
+		);
+
+		vc_map(
+			array(
+				'name'        => __( 'Team Department Filter', 'emotio-team' ),
+				'base'        => 'emotio_team_filter',
+				'icon'        => 'dashicons dashicons-filter',
+				'category'    => 'Emotio',
+				'description' => __( 'Department chips that filter a team layout on the page', 'emotio-team' ),
+				'params'      => array(
+					array(
+						'type'        => 'textfield',
+						'heading'     => __( 'Departments (slugs, comma-separated)', 'emotio-team' ),
+						'param_name'  => 'departments',
+						'description' => __( 'Empty shows every department in use.', 'emotio-team' ),
+					),
+					array(
+						'type'        => 'textfield',
+						'heading'     => __( 'Target (CSS selector)', 'emotio-team' ),
+						'param_name'  => 'target',
+						'description' => __( 'Leave empty to control the first team layout on the page.', 'emotio-team' ),
+					),
 				),
 			)
 		);
