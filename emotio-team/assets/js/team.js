@@ -33,6 +33,34 @@
 
 	/* ------------------------------------------------------------ modal */
 
+	// Hard scroll lock: themes with smooth-scroll (Salient's hijacks the
+	// wheel at page level) keep scrolling the page behind the overlay and
+	// starve the panel of wheel input. Freezing the body and routing wheel
+	// events straight into the dialog beats all of them.
+	var savedScrollY = 0;
+
+	function lockScroll() {
+		savedScrollY = window.scrollY || document.documentElement.scrollTop || 0;
+		var body = document.body;
+		body.style.position = 'fixed';
+		body.style.top = (-savedScrollY) + 'px';
+		body.style.left = '0';
+		body.style.right = '0';
+		body.style.width = '100%';
+		document.documentElement.style.overflow = 'hidden';
+	}
+
+	function unlockScroll() {
+		var body = document.body;
+		body.style.position = '';
+		body.style.top = '';
+		body.style.left = '';
+		body.style.right = '';
+		body.style.width = '';
+		document.documentElement.style.overflow = '';
+		window.scrollTo(0, savedScrollY);
+	}
+
 	function buildModal() {
 		if (modal) {
 			return modal;
@@ -57,6 +85,20 @@
 				closeModal();
 			}
 		});
+
+		// Route wheel input into the dialog ourselves so page-level
+		// smooth-scroll libraries can never steal it, and stop touch
+		// scrolling from chaining to the page.
+		var dialog = modal.querySelector('.etm-modal-dialog');
+		modal.addEventListener('wheel', function (e) {
+			e.preventDefault();
+			e.stopPropagation();
+			var delta = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY;
+			dialog.scrollTop += delta;
+		}, { passive: false });
+		modal.addEventListener('touchmove', function (e) {
+			e.stopPropagation();
+		}, { passive: true });
 		document.addEventListener('keydown', function (e) {
 			if (modal.hidden) {
 				return;
@@ -197,9 +239,10 @@
 
 		lastTrigger = document.activeElement;
 		modal.hidden = false;
+		modal.querySelector('.etm-modal-dialog').scrollTop = 0;
 		void modal.offsetWidth; // Force a layout so the open transition runs.
 		modal.classList.add('is-open');
-		document.body.style.overflow = 'hidden';
+		lockScroll();
 		modal.querySelector('.etm-modal-close').focus();
 	}
 
@@ -212,7 +255,7 @@
 		setTimeout(function () {
 			modal.hidden = true;
 		}, delay);
-		document.body.style.overflow = '';
+		unlockScroll();
 		if (lastTrigger && lastTrigger.focus) {
 			lastTrigger.focus();
 		}
@@ -256,9 +299,10 @@
 
 		lastTrigger = document.activeElement;
 		modal.hidden = false;
+		modal.querySelector('.etm-modal-dialog').scrollTop = 0;
 		void modal.offsetWidth;
 		modal.classList.add('is-open');
-		document.body.style.overflow = 'hidden';
+		lockScroll();
 		modal.querySelector('.etm-modal-close').focus();
 	}
 

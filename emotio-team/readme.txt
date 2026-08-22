@@ -4,7 +4,7 @@ Tags: team, staff, team members, salient, slider, grid, people
 Requires at least: 5.8
 Tested up to: 6.7
 Requires PHP: 7.4
-Stable tag: 1.5.4
+Stable tag: 1.5.5
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -93,6 +93,10 @@ Copy `templates/single-team_member.php` or `templates/archive-team_member.php` i
 The plugin keeps working. An expired or missing license only surfaces a notice on the Team admin screens and switches the `etm_is_licensed` filter to false (updates and support are tied to an active license).
 
 == Changelog ==
+
+= 1.5.5 =
+* Fixed: the profile slide-out/modal now scrolls on themes with page-level smooth scrolling (Salient's smooth scroll hijacks the mouse wheel, so the page behind scrolled while the panel stayed frozen — making long bios unreachable). The overlay now routes wheel input straight into the panel, hard-locks the page behind it (position-fixed body, restored on close), and contains touch scrolling. Verified against a simulated wheel-hijacking theme in a real browser.
+
 
 = 1.5.4 =
 * New: on-page diagnostics — add ?etm_debug=1 to any team page URL and a black overlay reports the running JS version, each layout's link mode, whether the markup is current, and a live log of every profile fetch (URL, HTTP status, whether the response contains the bio, and any fallback). Built for pinpointing caching/plugin conflicts in seconds.
