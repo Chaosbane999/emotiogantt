@@ -51,17 +51,108 @@
 		return modal;
 	}
 
-	function openModal(item, instance) {
-		var template = item.querySelector('template.etm-detail');
-		if (!template) {
+	// Lazy-load plugins rewrite img src -> data-src; resolve that on nodes
+	// cloned out of the <template>, which their scripts never process.
+	function fixLazyImages(root) {
+		root.querySelectorAll('img').forEach(function (img) {
+			var src = img.getAttribute('src') || '';
+			var real = img.getAttribute('data-src') || img.getAttribute('data-lazy-src') ||
+				img.getAttribute('data-original') || img.getAttribute('data-nectar-img-src') || '';
+			if (real && (!src || src.indexOf('data:image') === 0 || src.indexOf('blank.') !== -1)) {
+				img.setAttribute('src', real);
+			}
+			var srcset = img.getAttribute('data-srcset') || img.getAttribute('data-lazy-srcset');
+			if (srcset) {
+				img.setAttribute('srcset', srcset);
+			}
+			img.classList.remove('lazyload', 'lazyloading', 'lazyloaded', 'nectar-lazy');
+			img.removeAttribute('loading');
+		});
+	}
+
+	// Guarantee the profile photo: if the cloned markup lost its image,
+	// rebuild it from the card's data-photo attribute.
+	function ensurePhoto(content, item) {
+		var media = content.querySelector('.etm-detail-media');
+		if (!media) {
 			return;
 		}
+		var img = media.querySelector('img');
+		var photo = item.getAttribute('data-photo') || '';
+		if ((!img || !img.getAttribute('src')) && photo) {
+			if (img) {
+				img.remove();
+			}
+			img = document.createElement('img');
+			img.src = photo;
+			img.alt = item.getAttribute('data-name') || '';
+			media.appendChild(img);
+		}
+		if (!media.querySelector('img[src]')) {
+			media.style.display = 'none';
+		}
+	}
+
+	// Last-resort profile built from the visible card, for sites where an
+	// optimiser strips <template> tags out of the markup entirely.
+	function fallbackDetail(item) {
+		var wrap = document.createElement('div');
+		wrap.className = 'etm-detail-inner';
+		var media = document.createElement('div');
+		media.className = 'etm-detail-media';
+		var photo = item.getAttribute('data-photo');
+		if (photo) {
+			var img = document.createElement('img');
+			img.src = photo;
+			img.alt = item.getAttribute('data-name') || '';
+			media.appendChild(img);
+		}
+		var body = document.createElement('div');
+		body.className = 'etm-detail-body';
+		var name = document.createElement('h2');
+		name.className = 'etm-detail-name';
+		name.textContent = item.getAttribute('data-name') || '';
+		body.appendChild(name);
+		var role = item.querySelector('.etm-role');
+		if (role) {
+			var roleEl = document.createElement('p');
+			roleEl.className = 'etm-detail-role';
+			roleEl.textContent = role.textContent;
+			body.appendChild(roleEl);
+		}
+		var bio = item.querySelector('.etm-bio');
+		if (bio) {
+			var bioEl = document.createElement('div');
+			bioEl.className = 'etm-detail-bio';
+			bioEl.textContent = bio.textContent;
+			body.appendChild(bioEl);
+		}
+		var socials = item.querySelector('.etm-socials');
+		if (socials) {
+			body.appendChild(socials.cloneNode(true));
+		}
+		wrap.appendChild(media);
+		wrap.appendChild(body);
+		return wrap;
+	}
+
+	function openModal(item, instance) {
 		buildModal();
 		// Carry the instance's design tokens (accent, typography…) into the modal.
 		modal.style.cssText = instance.getAttribute('style') || '';
 		modal.classList.toggle('etm-modal--drawer', instance.getAttribute('data-link') === 'panel');
-		modal.querySelector('.etm-modal-content').innerHTML = '';
-		modal.querySelector('.etm-modal-content').appendChild(template.content.cloneNode(true));
+
+		var content = modal.querySelector('.etm-modal-content');
+		content.innerHTML = '';
+
+		var template = item.querySelector('template.etm-detail');
+		if (template && template.content && template.content.querySelector('.etm-detail-inner')) {
+			content.appendChild(template.content.cloneNode(true));
+		} else {
+			content.appendChild(fallbackDetail(item));
+		}
+		fixLazyImages(content);
+		ensurePhoto(content, item);
 
 		var name = modal.querySelector('.etm-detail-name');
 		if (name) {

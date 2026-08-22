@@ -4,7 +4,7 @@ Tags: team, staff, team members, salient, slider, grid, people
 Requires at least: 5.8
 Tested up to: 6.7
 Requires PHP: 7.4
-Stable tag: 1.1.0
+Stable tag: 1.1.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -86,6 +86,11 @@ Copy `templates/single-team_member.php` or `templates/archive-team_member.php` i
 The plugin keeps working. An expired or missing license only surfaces a notice on the Team admin screens and switches the `etm_is_licensed` filter to false (updates and support are tied to an active license).
 
 == Changelog ==
+
+= 1.1.1 =
+* Fixed: profile photo now always appears in the modal — lazy-load plugins (including Salient's lazy loading) were rewriting the image inside the hidden template so the cloned copy had no src; the profile now uses a plain image tag, de-lazies any rewritten attributes on open, and falls back to the card's photo if anything else strips it.
+* Fixed: if an optimiser removes the hidden profile template entirely, the modal/panel now rebuilds the profile (photo, name, role, snippet, socials) from the visible card instead of opening empty.
+* Changed: the slide-out panel photo now fills the top of the panel edge-to-edge.
 
 = 1.1.0 =
 * New: slide-out profile panel (link="panel") — a drawer that slides in from the right, as an alternative to the centred modal.

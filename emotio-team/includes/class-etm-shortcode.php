@@ -377,7 +377,11 @@ class ETM_Shortcode {
 		$clickable = 'none' !== $a['link'];
 		$is_modal  = in_array( $a['link'], array( 'modal', 'panel' ), true );
 		?>
-		<div class="etm-item" data-search="<?php echo esc_attr( $search_blob ); ?>" data-departments="<?php echo esc_attr( implode( ' ', $dept_slugs ) ); ?>">
+		<div class="etm-item"
+			data-search="<?php echo esc_attr( $search_blob ); ?>"
+			data-departments="<?php echo esc_attr( implode( ' ', $dept_slugs ) ); ?>"
+			data-name="<?php echo esc_attr( $name ); ?>"
+			data-photo="<?php echo esc_url( get_the_post_thumbnail_url( $post, 'large' ) ?: '' ); ?>">
 			<article class="etm-card" <?php echo $is_modal ? 'data-modal-source' : ''; ?>>
 				<div class="etm-media">
 					<?php
@@ -468,9 +472,17 @@ class ETM_Shortcode {
 		$fun_fact  = ETM_Meta::get( $id, 'fun_fact' );
 		$bio       = $post->post_content ? wp_kses_post( wpautop( $post->post_content ) ) : ( has_excerpt( $post ) ? '<p>' . esc_html( get_the_excerpt( $post ) ) . '</p>' : '' );
 		?>
+		<?php
+		// A hand-built <img> with a plain src: lazy-load plugins (and
+		// Salient's own lazy loading) rewrite generated thumbnail markup to
+		// data-src, which never resolves inside a cloned <template>.
+		$photo_url = get_the_post_thumbnail_url( $post, 'large' );
+		?>
 		<div class="etm-detail-inner">
 			<div class="etm-detail-media">
-				<?php echo get_the_post_thumbnail( $post, 'large', array( 'loading' => 'lazy' ) ); ?>
+				<?php if ( $photo_url ) : ?>
+					<img src="<?php echo esc_url( $photo_url ); ?>" alt="<?php echo esc_attr( get_the_title( $post ) ); ?>">
+				<?php endif; ?>
 			</div>
 			<div class="etm-detail-body">
 				<h2 class="etm-detail-name"><?php echo esc_html( get_the_title( $post ) ); ?><?php if ( $pronouns ) : ?> <span class="etm-pronouns"><?php echo esc_html( $pronouns ); ?></span><?php endif; ?></h2>

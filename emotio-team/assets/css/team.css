@@ -577,11 +577,15 @@
 .etm-modal--drawer .etm-detail-inner {
 	grid-template-columns: 1fr;
 }
+/* Drawer: the photo fills the top of the panel edge-to-edge. */
 .etm-modal--drawer .etm-detail-media {
 	min-height: 0;
+	height: clamp(300px, 48vh, 500px);
+	background: none;
 }
 .etm-modal--drawer .etm-detail-media img {
-	max-height: 380px;
+	object-fit: cover;
+	object-position: center top;
 }
 .etm-modal-close {
 	position: absolute;
@@ -606,19 +610,20 @@
 	display: grid;
 	grid-template-columns: minmax(220px, 340px) 1fr;
 }
-/* The photo reduces to fit its area, centred — never cropped. */
+/* Modal: the photo reduces to fit its area, centred — never cropped.
+   The img is absolutely positioned so its box is always the media cell,
+   regardless of what height the surrounding grid resolves to. */
 .etm-detail-media {
-	display: flex;
-	align-items: center;
-	justify-content: center;
+	position: relative;
+	min-height: 340px;
 	background: color-mix(in srgb, var(--etm-accent) 6%, transparent);
-	min-height: 320px;
 	overflow: hidden;
 }
 .etm-detail-media img {
+	position: absolute;
+	inset: 0;
 	width: 100%;
 	height: 100%;
-	max-height: min(86vh, 720px);
 	object-fit: contain;
 	object-position: center;
 	display: block;
@@ -697,9 +702,7 @@
 	}
 	.etm-detail-media {
 		min-height: 0;
-	}
-	.etm-detail-media img {
-		max-height: 320px;
+		height: 300px;
 	}
 	.etm-detail-body {
 		padding: 24px;
