@@ -176,6 +176,7 @@ class ETM_Shortcode {
 			'image_ratio'    => ETM_Settings::get( 'image_ratio' ),
 			'link'           => ETM_Settings::get( 'link' ),
 			'department'     => '',
+			'relation'       => 'OR',
 			'tag'            => '',
 			'ids'            => '',
 			'exclude'        => '',
@@ -188,6 +189,12 @@ class ETM_Shortcode {
 			'show_social'    => 'yes',
 			'show_bio'       => 'no',
 			'show_title'     => 'yes',
+			'show_email'     => 'no',
+			'show_phone'     => 'no',
+			'show_location'  => 'no',
+			'show_department' => 'no',
+			'columns_tablet' => '',
+			'columns_mobile' => '',
 			'group_by'       => '',
 			'accent'         => '',
 			'gap'            => '',
@@ -220,7 +227,8 @@ class ETM_Shortcode {
 		$a['group_by'] = in_array( $a['group_by'], array( 'department', 'yes', '1' ), true ) ? 'department' : '';
 		$a['style']   = in_array( $a['style'], array( 'cards', 'minimal', 'overlay', 'circle' ), true ) ? $a['style'] : 'cards';
 		$a['hover']   = in_array( $a['hover'], array( 'lift', 'zoom', 'swap', 'grayscale', 'none' ), true ) ? $a['hover'] : 'lift';
-		$a['link']         = in_array( $a['link'], array( 'modal', 'panel', 'page', 'none' ), true ) ? $a['link'] : 'modal';
+		$a['link']         = in_array( $a['link'], array( 'modal', 'panel', 'page', 'custom', 'none' ), true ) ? $a['link'] : 'modal';
+		$a['relation']     = 'AND' === strtoupper( $a['relation'] ) ? 'AND' : 'OR';
 		$a['slider_style'] = in_array( $a['slider_style'], array( 'drag', 'paged' ), true ) ? $a['slider_style'] : 'drag';
 		$a['columns']      = max( 1, min( 6, absint( $a['columns'] ) ) );
 
@@ -252,6 +260,14 @@ class ETM_Shortcode {
 		if ( $is_slider && 'drag' === $a['slider_style'] ) {
 			$classes[] = 'etm--drag';
 		}
+		$cols_tablet = ( '' !== $a['columns_tablet'] && is_numeric( $a['columns_tablet'] ) ) ? max( 1, min( 6, (int) $a['columns_tablet'] ) ) : 0;
+		$cols_mobile = ( '' !== $a['columns_mobile'] && is_numeric( $a['columns_mobile'] ) ) ? max( 1, min( 4, (int) $a['columns_mobile'] ) ) : 0;
+		if ( $cols_tablet ) {
+			$classes[] = 'etm--has-cols-t';
+		}
+		if ( $cols_mobile ) {
+			$classes[] = 'etm--has-cols-m';
+		}
 		if ( $a['class'] ) {
 			$classes[] = sanitize_html_class( $a['class'] );
 		}
@@ -265,6 +281,12 @@ class ETM_Shortcode {
 		}
 		if ( ETM_Settings::get( 'spacing' ) !== $a['spacing'] ) {
 			$style_attr .= '--etm-el-gap:' . ETM_Settings::spacing_value( $a['spacing'] ) . ';';
+		}
+		if ( $cols_tablet ) {
+			$style_attr .= '--etm-cols-tablet:' . $cols_tablet . ';';
+		}
+		if ( $cols_mobile ) {
+			$style_attr .= '--etm-cols-mobile:' . $cols_mobile . ';';
 		}
 		foreach ( array( 'name', 'title', 'bio', 'social' ) as $el ) {
 			if ( '' !== $a[ $el . '_size' ] && is_numeric( $a[ $el . '_size' ] ) && (int) $a[ $el . '_size' ] > 0 ) {
@@ -371,6 +393,16 @@ class ETM_Shortcode {
 			case 'rand':
 				$args['orderby'] = 'rand';
 				break;
+			case 'id':
+				$args['orderby'] = 'ID';
+				break;
+			case 'job_title':
+				$args['meta_key'] = '_etm_job_title';
+				$args['orderby']  = array(
+					'meta_value' => $args['order'],
+					'title'      => 'ASC',
+				);
+				break;
 			default:
 				$args['orderby'] = array(
 					'menu_order' => $args['order'],
@@ -384,6 +416,8 @@ class ETM_Shortcode {
 				'taxonomy' => ETM_CPT::TAX_DEPT,
 				'field'    => 'slug',
 				'terms'    => array_filter( array_map( 'sanitize_title', explode( ',', $a['department'] ) ) ),
+				// AND = member must belong to every listed department.
+				'operator' => 'AND' === $a['relation'] ? 'AND' : 'IN',
 			);
 		}
 		if ( $a['tag'] ) {
@@ -530,6 +564,15 @@ class ETM_Shortcode {
 
 		$clickable = 'none' !== $a['link'];
 		$is_modal  = in_array( $a['link'], array( 'modal', 'panel' ), true );
+		$hit_url   = $permalink;
+		$external  = false;
+		if ( 'custom' === $a['link'] ) {
+			$custom_url = ETM_Meta::get( $id, 'profile_url' );
+			if ( $custom_url ) {
+				$hit_url  = $custom_url;
+				$external = true;
+			}
+		}
 		?>
 		<div class="etm-item etm-item--spotlight"
 			data-search="<?php echo esc_attr( strtolower( implode( ' ', array_filter( array_merge( array( $name, $job_title ), $dept_names ) ) ) ) ); ?>"
@@ -551,7 +594,7 @@ class ETM_Shortcode {
 								<span class="screen-reader-text"><?php echo esc_html( sprintf( /* translators: %s: member name */ __( 'View profile of %s', 'emotio-team' ), $name ) ); ?></span>
 							</button>
 						<?php else : ?>
-							<a class="etm-hit" href="<?php echo esc_url( $permalink ); ?>">
+							<a class="etm-hit" href="<?php echo esc_url( $hit_url ); ?>" <?php echo $external ? 'target="_blank" rel="noopener noreferrer"' : ''; ?>>
 								<span class="screen-reader-text"><?php echo esc_html( sprintf( /* translators: %s: member name */ __( 'View profile of %s', 'emotio-team' ), $name ) ); ?></span>
 							</a>
 						<?php endif; ?>
@@ -559,7 +602,7 @@ class ETM_Shortcode {
 				</div>
 				<div class="etm-body">
 					<?php if ( $dept_names ) : ?><p class="etm-spotlight-dept"><?php echo esc_html( implode( ' · ', $dept_names ) ); ?></p><?php endif; ?>
-					<h3 class="etm-name"><?php echo self::name_link( $name, $permalink, $a ); // phpcs:ignore ?></h3>
+					<h3 class="etm-name"><?php echo self::name_link( $name, $hit_url, $a, $external ); // phpcs:ignore ?></h3>
 					<?php if ( $job_title && 'yes' === $a['show_title'] ) : ?><p class="etm-role"><?php echo esc_html( $job_title ); ?></p><?php endif; ?>
 					<?php if ( $bio ) : ?><p class="etm-bio"><?php echo esc_html( $bio ); ?></p><?php endif; ?>
 					<?php if ( 'no' !== $a['show_social'] && $socials ) : ?><?php self::social_row( $socials ); ?><?php endif; ?>
@@ -657,6 +700,15 @@ class ETM_Shortcode {
 
 		$clickable = 'none' !== $a['link'];
 		$is_modal  = in_array( $a['link'], array( 'modal', 'panel' ), true );
+		$hit_url   = $permalink;
+		$external  = false;
+		if ( 'custom' === $a['link'] ) {
+			$custom_url = ETM_Meta::get( $id, 'profile_url' );
+			if ( $custom_url ) {
+				$hit_url  = $custom_url;
+				$external = true;
+			}
+		}
 		?>
 		<div class="etm-item"
 			data-search="<?php echo esc_attr( $search_blob ); ?>"
@@ -678,7 +730,7 @@ class ETM_Shortcode {
 					?>
 					<?php if ( 'overlay' === $a['style'] ) : ?>
 						<div class="etm-overlay">
-							<h3 class="etm-name"><?php echo self::name_link( $name, $permalink, $a ); // phpcs:ignore ?></h3>
+							<h3 class="etm-name"><?php echo self::name_link( $name, $hit_url, $a, $external ); // phpcs:ignore ?></h3>
 							<?php if ( $job_title && 'yes' === $a['show_title'] ) : ?><p class="etm-role"><?php echo esc_html( $job_title ); ?></p><?php endif; ?>
 							<?php if ( 'yes' === $a['show_social'] && $socials ) : ?><?php self::social_row( $socials ); ?><?php endif; ?>
 						</div>
@@ -691,7 +743,7 @@ class ETM_Shortcode {
 								<span class="screen-reader-text"><?php echo esc_html( sprintf( /* translators: %s: member name */ __( 'View profile of %s', 'emotio-team' ), $name ) ); ?></span>
 							</button>
 						<?php else : ?>
-							<a class="etm-hit" href="<?php echo esc_url( $permalink ); ?>">
+							<a class="etm-hit" href="<?php echo esc_url( $hit_url ); ?>" <?php echo $external ? 'target="_blank" rel="noopener noreferrer"' : ''; ?>>
 								<span class="screen-reader-text"><?php echo esc_html( sprintf( /* translators: %s: member name */ __( 'View profile of %s', 'emotio-team' ), $name ) ); ?></span>
 							</a>
 						<?php endif; ?>
@@ -699,9 +751,10 @@ class ETM_Shortcode {
 				</div>
 				<?php if ( 'overlay' !== $a['style'] ) : ?>
 					<div class="etm-body">
-						<h3 class="etm-name"><?php echo self::name_link( $name, $permalink, $a ); // phpcs:ignore ?></h3>
+						<h3 class="etm-name"><?php echo self::name_link( $name, $hit_url, $a, $external ); // phpcs:ignore ?></h3>
 						<?php if ( $job_title && 'yes' === $a['show_title'] ) : ?><p class="etm-role"><?php echo esc_html( $job_title ); ?></p><?php endif; ?>
 						<?php if ( 'yes' === $a['show_bio'] && $excerpt ) : ?><p class="etm-bio"><?php echo esc_html( wp_trim_words( $excerpt, 24 ) ); ?></p><?php endif; ?>
+						<?php self::contact_rows( $id, $a, $dept_names ); ?>
 						<?php if ( 'yes' === $a['show_social'] && $socials ) : ?><?php self::social_row( $socials ); ?><?php endif; ?>
 					</div>
 				<?php endif; ?>
@@ -714,14 +767,50 @@ class ETM_Shortcode {
 	}
 
 	/**
-	 * Name markup — links to the profile page only in "page" mode
-	 * (in modal mode the whole card is the trigger).
+	 * Name markup — links out in "page" / "custom" modes
+	 * (in modal/panel mode the whole card is the trigger).
 	 */
-	protected static function name_link( $name, $permalink, $a ) {
-		if ( 'page' === $a['link'] ) {
-			return '<a href="' . esc_url( $permalink ) . '">' . esc_html( $name ) . '</a>';
+	protected static function name_link( $name, $url, $a, $external = false ) {
+		if ( in_array( $a['link'], array( 'page', 'custom' ), true ) ) {
+			$target = $external ? ' target="_blank" rel="noopener noreferrer"' : '';
+			return '<a href="' . esc_url( $url ) . '"' . $target . '>' . esc_html( $name ) . '</a>';
 		}
 		return esc_html( $name );
+	}
+
+	/**
+	 * Optional on-card contact details (department, email, phone, location).
+	 */
+	protected static function contact_rows( $post_id, $a, $dept_names = array() ) {
+		$rows = array();
+
+		if ( 'yes' === $a['show_department'] && $dept_names ) {
+			$rows[] = '<li class="etm-contact-dept">' . esc_html( implode( ' · ', $dept_names ) ) . '</li>';
+		}
+		if ( 'yes' === $a['show_email'] ) {
+			$email = ETM_Meta::get( $post_id, 'email' );
+			if ( $email ) {
+				$rows[] = '<li>' . self::icon( 'email' ) . '<a href="mailto:' . esc_attr( $email ) . '">' . esc_html( $email ) . '</a></li>';
+			}
+		}
+		if ( 'yes' === $a['show_phone'] ) {
+			foreach ( array( 'phone', 'mobile' ) as $field ) {
+				$number = ETM_Meta::get( $post_id, $field );
+				if ( $number ) {
+					$rows[] = '<li>' . self::icon( 'phone' ) . '<a href="tel:' . esc_attr( preg_replace( '/[^0-9+]/', '', $number ) ) . '">' . esc_html( $number ) . '</a></li>';
+				}
+			}
+		}
+		if ( 'yes' === $a['show_location'] ) {
+			$location = ETM_Meta::get( $post_id, 'location' );
+			if ( $location ) {
+				$rows[] = '<li>' . self::icon( 'pin' ) . '<span>' . esc_html( $location ) . '</span></li>';
+			}
+		}
+
+		if ( $rows ) {
+			echo '<ul class="etm-contact">' . implode( '', $rows ) . '</ul>'; // phpcs:ignore WordPress.Security.EscapeOutput
+		}
 	}
 
 	/**
@@ -778,6 +867,10 @@ class ETM_Shortcode {
 					<?php endif; ?>
 					<?php if ( $phone ) : ?>
 						<a class="etm-btn" href="tel:<?php echo esc_attr( preg_replace( '/[^0-9+]/', '', $phone ) ); ?>"><?php echo self::icon( 'phone' ); // phpcs:ignore ?><?php echo esc_html( $phone ); ?></a>
+					<?php endif; ?>
+					<?php $mobile = ETM_Meta::get( $id, 'mobile' ); ?>
+					<?php if ( $mobile ) : ?>
+						<a class="etm-btn" href="tel:<?php echo esc_attr( preg_replace( '/[^0-9+]/', '', $mobile ) ); ?>"><?php echo self::icon( 'phone' ); // phpcs:ignore ?><?php echo esc_html( $mobile ); ?></a>
 					<?php endif; ?>
 					<a class="etm-btn etm-btn--ghost" href="<?php echo esc_url( ETM_Single::vcard_url( $id ) ); ?>"><?php echo self::icon( 'download' ); // phpcs:ignore ?><?php esc_html_e( 'Save contact', 'emotio-team' ); ?></a>
 					<?php if ( ETM_Settings::get( 'enable_single' ) ) : ?>

@@ -89,6 +89,10 @@ class ETM_Single {
 		if ( $phone ) {
 			$lines[] = 'TEL;TYPE=WORK,VOICE:' . self::vesc( $phone );
 		}
+		$mobile = ETM_Meta::get( $id, 'mobile' );
+		if ( $mobile ) {
+			$lines[] = 'TEL;TYPE=CELL,VOICE:' . self::vesc( $mobile );
+		}
 		if ( ETM_Settings::get( 'enable_single' ) ) {
 			$lines[] = 'URL:' . esc_url_raw( get_permalink( $post ) );
 		}

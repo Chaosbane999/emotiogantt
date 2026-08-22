@@ -23,6 +23,29 @@ class ETM_Admin {
 		add_filter( 'post_row_actions', array( __CLASS__, 'row_actions' ), 10, 2 );
 		add_action( 'admin_action_etm_duplicate', array( __CLASS__, 'duplicate' ) );
 		add_action( 'admin_notices', array( __CLASS__, 'order_hint' ) );
+		add_action( 'restrict_manage_posts', array( __CLASS__, 'department_dropdown' ) );
+	}
+
+	/**
+	 * Department dropdown filter above the members list.
+	 */
+	public static function department_dropdown( $post_type ) {
+		if ( ETM_CPT::POST_TYPE !== $post_type ) {
+			return;
+		}
+		$selected = isset( $_GET[ ETM_CPT::TAX_DEPT ] ) ? sanitize_text_field( wp_unslash( $_GET[ ETM_CPT::TAX_DEPT ] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		wp_dropdown_categories(
+			array(
+				'show_option_all' => __( 'All departments', 'emotio-team' ),
+				'taxonomy'        => ETM_CPT::TAX_DEPT,
+				'name'            => ETM_CPT::TAX_DEPT,
+				'value_field'     => 'slug',
+				'selected'        => $selected,
+				'hierarchical'    => true,
+				'show_count'      => true,
+				'hide_empty'      => true,
+			)
+		);
 	}
 
 	public static function columns( $columns ) {

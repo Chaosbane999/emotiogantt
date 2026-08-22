@@ -42,6 +42,15 @@ class ETM_Elementor_Widget extends \Elementor\Widget_Base {
 			'type'        => $cm::TEXT,
 			'description' => __( 'Comma-separate for multiple; empty shows everyone.', 'emotio-team' ),
 		) );
+		$this->add_control( 'relation', array(
+			'label'   => __( 'Multiple departments match', 'emotio-team' ),
+			'type'    => $cm::SELECT,
+			'default' => 'OR',
+			'options' => array(
+				'OR'  => __( 'ANY of them (OR)', 'emotio-team' ),
+				'AND' => __( 'ALL of them (AND)', 'emotio-team' ),
+			),
+		) );
 		$this->add_control( 'tag', array(
 			'label' => __( 'Skill / tag slugs', 'emotio-team' ),
 			'type'  => $cm::TEXT,
@@ -64,7 +73,9 @@ class ETM_Elementor_Widget extends \Elementor\Widget_Base {
 			'options' => array(
 				'menu_order' => __( 'Custom order', 'emotio-team' ),
 				'title'      => __( 'Name', 'emotio-team' ),
+				'job_title'  => __( 'Job title', 'emotio-team' ),
 				'date'       => __( 'Newest first', 'emotio-team' ),
+				'id'         => __( 'ID', 'emotio-team' ),
 				'rand'       => __( 'Random', 'emotio-team' ),
 			),
 		) );
@@ -105,17 +116,34 @@ class ETM_Elementor_Widget extends \Elementor\Widget_Base {
 			'default' => '3',
 			'options' => array( '1' => '1', '2' => '2', '3' => '3', '4' => '4', '5' => '5', '6' => '6' ),
 		) );
+		$this->add_control( 'columns_tablet', array(
+			'label'   => __( 'Columns — tablet', 'emotio-team' ),
+			'type'    => $cm::SELECT,
+			'default' => '',
+			'options' => array( '' => __( 'Auto', 'emotio-team' ), '1' => '1', '2' => '2', '3' => '3', '4' => '4' ),
+		) );
+		$this->add_control( 'columns_mobile', array(
+			'label'   => __( 'Columns — mobile', 'emotio-team' ),
+			'type'    => $cm::SELECT,
+			'default' => '',
+			'options' => array( '' => __( 'Auto', 'emotio-team' ), '1' => '1', '2' => '2', '3' => '3' ),
+		) );
 		$this->add_control( 'link', array(
 			'label'   => __( 'Card click', 'emotio-team' ),
 			'type'    => $cm::SELECT,
 			'default' => 'modal',
 			'options' => array(
-				'modal' => __( 'Open profile modal', 'emotio-team' ),
-				'panel' => __( 'Slide-out profile panel', 'emotio-team' ),
-				'page'  => __( 'Go to profile page', 'emotio-team' ),
-				'none'  => __( 'Not clickable', 'emotio-team' ),
+				'modal'  => __( 'Open profile modal', 'emotio-team' ),
+				'panel'  => __( 'Slide-out profile panel', 'emotio-team' ),
+				'page'   => __( 'Go to profile page', 'emotio-team' ),
+				'custom' => __( 'Custom URL (per member)', 'emotio-team' ),
+				'none'   => __( 'Not clickable', 'emotio-team' ),
 			),
 		) );
+		$this->add_control( 'show_department', array( 'label' => __( 'Department on cards', 'emotio-team' ), 'type' => $cm::SWITCHER, 'return_value' => 'yes' ) );
+		$this->add_control( 'show_email', array( 'label' => __( 'Email on cards', 'emotio-team' ), 'type' => $cm::SWITCHER, 'return_value' => 'yes' ) );
+		$this->add_control( 'show_phone', array( 'label' => __( 'Phone on cards', 'emotio-team' ), 'type' => $cm::SWITCHER, 'return_value' => 'yes' ) );
+		$this->add_control( 'show_location', array( 'label' => __( 'Location on cards', 'emotio-team' ), 'type' => $cm::SWITCHER, 'return_value' => 'yes' ) );
 		$this->add_control( 'show_filter', array( 'label' => __( 'Department filter chips', 'emotio-team' ), 'type' => $cm::SWITCHER, 'return_value' => 'yes' ) );
 		$this->add_control( 'show_search', array( 'label' => __( 'Live search box', 'emotio-team' ), 'type' => $cm::SWITCHER, 'return_value' => 'yes' ) );
 		$this->add_control( 'show_bio', array( 'label' => __( 'Short bio on cards', 'emotio-team' ), 'type' => $cm::SWITCHER, 'return_value' => 'yes' ) );
@@ -215,6 +243,13 @@ class ETM_Elementor_Widget extends \Elementor\Widget_Base {
 				'slider_style' => $s['slider_style'] ?? 'drag',
 				'group_by'     => ( $s['group_by_department'] ?? '' ) === 'yes' ? 'department' : '',
 				'columns'      => $s['columns'] ?? 3,
+				'columns_tablet' => $s['columns_tablet'] ?? '',
+				'columns_mobile' => $s['columns_mobile'] ?? '',
+				'relation'       => $s['relation'] ?? 'OR',
+				'show_department' => ( $s['show_department'] ?? '' ) === 'yes' ? 'yes' : 'no',
+				'show_email'      => ( $s['show_email'] ?? '' ) === 'yes' ? 'yes' : 'no',
+				'show_phone'      => ( $s['show_phone'] ?? '' ) === 'yes' ? 'yes' : 'no',
+				'show_location'   => ( $s['show_location'] ?? '' ) === 'yes' ? 'yes' : 'no',
 				'style'        => $s['style'] ?? 'cards',
 				'hover'        => $s['hover'] ?? 'lift',
 				'image_ratio'  => $s['image_ratio'] ?? '3-4',

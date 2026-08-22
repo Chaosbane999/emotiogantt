@@ -4,7 +4,7 @@ Tags: team, staff, team members, salient, slider, grid, people
 Requires at least: 5.8
 Tested up to: 6.7
 Requires PHP: 7.4
-Stable tag: 1.4.0
+Stable tag: 1.5.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -30,7 +30,9 @@ Emotio Team gives a Salient (or any WordPress) site a complete, beautifully desi
 * `[emotio_team]` shortcode, a live-preview **Gutenberg block**, a **WPBakery element** (the builder Salient ships with) and a native **Elementor widget** — all rendered by the same engine, so they always match.
 * **Spotlight layout** (featured members large, the rest in a grid) and **group-by-department sections** with per-department headings.
 * **Grid, slider or list** deployment. The slider is dependency-free, touch-native (CSS scroll-snap), keyboard accessible, with arrows, dots and optional autoplay.
-* Filter any placement by **department, skill/tag, specific IDs or Featured** members.
+* Filter any placement by **department, skill/tag, specific IDs or Featured** members — with **AND/OR logic** for multiple departments.
+* A visual **Shortcode Generator** and **saved displays**: build a configuration once, place `[emotio_team_display id="3"]` on any number of pages, edit centrally forever.
+* **Per-field card control** (department, email, phone, location each toggleable), **per-device columns** (desktop/tablet/mobile) and a per-member **Custom URL** click action.
 * Optional front-end **live search** and **department filter chips** on any placement — plus standalone **Team Search Bar** and **Department Filter** elements that control any team layout on the page.
 * A dedicated **"Emotio" category** in Salient's builder, with a **Team Member Card** element for single profiles.
 * **Profile triggers on any element**: Salient Buttons/Images/Icons get a "Team Profile" tab, and any element with the class `etm-profile-ID` / `etm-panel-ID` (or a `#etm-profile-ID` link) opens that member's modal or panel — even on pages with no team layout.
@@ -91,6 +93,16 @@ Copy `templates/single-team_member.php` or `templates/archive-team_member.php` i
 The plugin keeps working. An expired or missing license only surfaces a notice on the Team admin screens and switches the `etm_is_licensed` filter to false (updates and support are tied to an active license).
 
 == Changelog ==
+
+= 1.5.0 =
+* New: Shortcode Generator under Team → Shortcode Generator — build any team display visually, copy the shortcode, or save it as a reusable display.
+* New: saved displays — [emotio_team_display id="3"] references a named configuration; edit it once and every page using it updates. Also available as a "Saved Team Display" element in the builder.
+* New: AND/OR department logic — relation="AND" shows only members in ALL listed departments (e.g. Architecture AND Warsaw Office).
+* New: per-field card visibility — show_department, show_email, show_phone, show_location put those details directly on cards (independently toggleable everywhere).
+* New: Custom URL click action (link="custom") with a per-member "Custom profile URL" field — cards link out to personal sites, opening in a new tab.
+* New: per-device columns — columns_tablet and columns_mobile override the automatic responsive collapse.
+* New: sort by job title or ID on the front end (orderby="job_title|id").
+* New: Mobile number field (vCards export it as CELL; shows in profiles and CSV), department dropdown filter above the Team admin list, and profile_url/mobile columns in CSV import/export.
 
 = 1.4.0 =
 * New: dedicated "Emotio" category in Salient's page builder with three extra elements — Team Member Card (one person's card anywhere), Team Search Bar and Team Department Filter (standalone controls that drive any team layout on the page, targetable via CSS selector).

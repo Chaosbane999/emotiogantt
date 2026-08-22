@@ -43,6 +43,7 @@ class ETM_Meta {
 			'job_title' => __( 'Job title', 'emotio-team' ),
 			'email'     => __( 'Email', 'emotio-team' ),
 			'phone'     => __( 'Phone', 'emotio-team' ),
+			'mobile'    => __( 'Mobile', 'emotio-team' ),
 			'location'  => __( 'Location', 'emotio-team' ),
 			'pronouns'  => __( 'Pronouns', 'emotio-team' ),
 			'fun_fact'  => __( 'Fun fact', 'emotio-team' ),
@@ -158,6 +159,12 @@ class ETM_Meta {
 				</p>
 			<?php endforeach; ?>
 		</div>
+		<p class="etm-field">
+			<label for="etm-profile-url"><strong><?php esc_html_e( 'Custom profile URL', 'emotio-team' ); ?></strong></label><br>
+			<input type="url" class="widefat" id="etm-profile-url" name="etm[profile_url]" placeholder="https://"
+				value="<?php echo esc_attr( self::get( $post->ID, 'profile_url' ) ); ?>">
+			<span class="description"><?php esc_html_e( 'Used when a layout\'s card click is set to "Custom URL" — e.g. a personal site or external bio. Opens in a new tab.', 'emotio-team' ); ?></span>
+		</p>
 		<h4><?php esc_html_e( 'Social profiles', 'emotio-team' ); ?></h4>
 		<div class="etm-fields etm-fields--social">
 			<?php foreach ( self::social_networks() as $key => $label ) : ?>
@@ -234,6 +241,8 @@ class ETM_Meta {
 			$value = isset( $data[ 'social_' . $key ] ) ? esc_url_raw( $data[ 'social_' . $key ] ) : '';
 			self::update( $post_id, 'social_' . $key, $value );
 		}
+
+		self::update( $post_id, 'profile_url', isset( $data['profile_url'] ) ? esc_url_raw( $data['profile_url'] ) : '' );
 
 		foreach ( ETM_Settings::custom_fields() as $key => $label ) {
 			$value = isset( $data[ 'cf_' . $key ] ) ? sanitize_text_field( $data[ 'cf_' . $key ] ) : '';

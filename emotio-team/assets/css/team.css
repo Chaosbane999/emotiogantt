@@ -117,12 +117,14 @@
 
 @media (max-width: 1024px) {
 	.etm--cols-4, .etm--cols-5, .etm--cols-6 { --etm-cols: 3; }
+	.etm.etm--has-cols-t { --etm-cols: var(--etm-cols-tablet) !important; }
 }
 @media (max-width: 768px) {
 	.etm--cols-3, .etm--cols-4, .etm--cols-5, .etm--cols-6 { --etm-cols: 2; }
+	.etm.etm--has-cols-m { --etm-cols: var(--etm-cols-mobile) !important; }
 }
 @media (max-width: 480px) {
-	.etm-grid { --etm-cols: 1 !important; }
+	.etm-grid { --etm-cols: var(--etm-cols-mobile, 1) !important; }
 	.etm-toolbar { justify-content: stretch; }
 	.etm-search { flex: 1 1 100%; }
 }
@@ -226,6 +228,50 @@
 	font-size: var(--etm-bio-size, 0.9em);
 	line-height: 1.6;
 	color: var(--etm-bio-color, color-mix(in srgb, currentColor 75%, transparent));
+}
+
+/* on-card contact details */
+.etm-contact {
+	list-style: none !important;
+	margin: 4px 0 0 !important;
+	padding: 0 !important;
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	font-size: 0.85em;
+}
+.etm-contact li {
+	display: flex;
+	align-items: center;
+	gap: 7px;
+	margin: 0 !important;
+	list-style: none !important;
+	opacity: 0.8;
+	overflow-wrap: anywhere;
+}
+.etm-contact .etm-icon {
+	width: 14px;
+	height: 14px;
+	flex: none;
+	opacity: 0.6;
+}
+.etm-contact a {
+	color: inherit;
+	text-decoration: none;
+	position: relative;
+	z-index: 4;
+}
+.etm-contact a:hover {
+	color: var(--etm-accent);
+}
+.etm-contact-dept {
+	text-transform: uppercase;
+	letter-spacing: 0.06em;
+	font-size: 0.9em;
+	opacity: 0.55 !important;
+}
+.etm--style-circle .etm-contact li {
+	justify-content: center;
 }
 
 /* social icons */

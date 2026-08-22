@@ -81,6 +81,25 @@
 							onChange: function (v) { set({ columns: v }); }
 						}),
 						el(SelectControl, {
+							label: __('Columns — tablet', 'emotio-team'),
+							value: a.columnsTablet,
+							options: [
+								{ label: __('Auto', 'emotio-team'), value: '' },
+								{ label: '1', value: '1' }, { label: '2', value: '2' },
+								{ label: '3', value: '3' }, { label: '4', value: '4' }
+							],
+							onChange: function (v) { set({ columnsTablet: v }); }
+						}),
+						el(SelectControl, {
+							label: __('Columns — mobile', 'emotio-team'),
+							value: a.columnsMobile,
+							options: [
+								{ label: __('Auto', 'emotio-team'), value: '' },
+								{ label: '1', value: '1' }, { label: '2', value: '2' }, { label: '3', value: '3' }
+							],
+							onChange: function (v) { set({ columnsMobile: v }); }
+						}),
+						el(SelectControl, {
 							label: __('Card style', 'emotio-team'),
 							value: a.style,
 							options: [
@@ -125,6 +144,15 @@
 							value: a.department,
 							onChange: function (v) { set({ department: v }); }
 						}),
+						el(SelectControl, {
+							label: __('Multiple departments match', 'emotio-team'),
+							value: a.relation,
+							options: [
+								{ label: __('ANY of them (OR)', 'emotio-team'), value: 'OR' },
+								{ label: __('ALL of them (AND)', 'emotio-team'), value: 'AND' }
+							],
+							onChange: function (v) { set({ relation: v }); }
+						}),
 						el(TextControl, {
 							label: __('Skill / tag slugs', 'emotio-team'),
 							value: a.tag,
@@ -143,7 +171,9 @@
 							options: [
 								{ label: __('Custom order', 'emotio-team'), value: 'menu_order' },
 								{ label: __('Name', 'emotio-team'), value: 'title' },
+								{ label: __('Job title', 'emotio-team'), value: 'job_title' },
 								{ label: __('Newest first', 'emotio-team'), value: 'date' },
+								{ label: __('ID', 'emotio-team'), value: 'id' },
 								{ label: __('Random', 'emotio-team'), value: 'rand' }
 							],
 							onChange: function (v) { set({ orderby: v }); }
@@ -172,6 +202,26 @@
 							checked: a.showBio,
 							onChange: function (v) { set({ showBio: v }); }
 						}),
+						el(ToggleControl, {
+							label: __('Department on cards', 'emotio-team'),
+							checked: a.showDepartment,
+							onChange: function (v) { set({ showDepartment: v }); }
+						}),
+						el(ToggleControl, {
+							label: __('Email on cards', 'emotio-team'),
+							checked: a.showEmail,
+							onChange: function (v) { set({ showEmail: v }); }
+						}),
+						el(ToggleControl, {
+							label: __('Phone on cards', 'emotio-team'),
+							checked: a.showPhone,
+							onChange: function (v) { set({ showPhone: v }); }
+						}),
+						el(ToggleControl, {
+							label: __('Location on cards', 'emotio-team'),
+							checked: a.showLocation,
+							onChange: function (v) { set({ showLocation: v }); }
+						}),
 						el(SelectControl, {
 							label: __('Card click', 'emotio-team'),
 							value: a.link,
@@ -179,6 +229,7 @@
 								{ label: __('Open profile modal', 'emotio-team'), value: 'modal' },
 								{ label: __('Slide-out profile panel', 'emotio-team'), value: 'panel' },
 								{ label: __('Go to profile page', 'emotio-team'), value: 'page' },
+								{ label: __('Custom URL (per member)', 'emotio-team'), value: 'custom' },
 								{ label: __('Not clickable', 'emotio-team'), value: 'none' }
 							],
 							onChange: function (v) { set({ link: v }); }

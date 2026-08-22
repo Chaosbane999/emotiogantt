@@ -109,7 +109,7 @@ class ETM_Settings {
 		$styles  = array( 'cards', 'minimal', 'overlay', 'circle' );
 		$hovers  = array( 'lift', 'zoom', 'swap', 'grayscale', 'none' );
 		$ratios  = array( '1-1', '3-4', '2-3', '4-3', '16-9' );
-		$links   = array( 'modal', 'panel', 'page', 'none' );
+		$links   = array( 'modal', 'panel', 'page', 'custom', 'none' );
 		$spaces  = array( 'tight', 'normal', 'spaced' );
 
 		$out['style']       = in_array( $input['style'] ?? '', $styles, true ) ? $input['style'] : $out['style'];
@@ -333,6 +333,7 @@ class ETM_Settings {
 								<option value="modal" <?php selected( $s['link'], 'modal' ); ?>><?php esc_html_e( 'Open profile modal', 'emotio-team' ); ?></option>
 								<option value="panel" <?php selected( $s['link'], 'panel' ); ?>><?php esc_html_e( 'Slide-out profile panel', 'emotio-team' ); ?></option>
 								<option value="page" <?php selected( $s['link'], 'page' ); ?>><?php esc_html_e( 'Go to profile page', 'emotio-team' ); ?></option>
+								<option value="custom" <?php selected( $s['link'], 'custom' ); ?>><?php esc_html_e( 'Custom URL (from each member\'s profile)', 'emotio-team' ); ?></option>
 								<option value="none" <?php selected( $s['link'], 'none' ); ?>><?php esc_html_e( 'Not clickable', 'emotio-team' ); ?></option>
 							</select>
 						</td>

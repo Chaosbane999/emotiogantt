@@ -78,6 +78,18 @@ class ETM_WPBakery {
 					),
 					array(
 						'type'       => 'dropdown',
+						'heading'    => __( 'Columns — tablet', 'emotio-team' ),
+						'param_name' => 'columns_tablet',
+						'value'      => array( __( 'Auto', 'emotio-team' ) => '', '1' => '1', '2' => '2', '3' => '3', '4' => '4' ),
+					),
+					array(
+						'type'       => 'dropdown',
+						'heading'    => __( 'Columns — mobile', 'emotio-team' ),
+						'param_name' => 'columns_mobile',
+						'value'      => array( __( 'Auto', 'emotio-team' ) => '', '1' => '1', '2' => '2', '3' => '3' ),
+					),
+					array(
+						'type'       => 'dropdown',
 						'heading'    => __( 'Card style', 'emotio-team' ),
 						'param_name' => 'style',
 						'value'      => array(
@@ -113,6 +125,15 @@ class ETM_WPBakery {
 						'description' => __( 'Show only members of one department. Multiple: edit the shortcode and comma-separate slugs.', 'emotio-team' ),
 					),
 					array(
+						'type'       => 'dropdown',
+						'heading'    => __( 'Multiple departments match', 'emotio-team' ),
+						'param_name' => 'relation',
+						'value'      => array(
+							__( 'ANY of them (OR)', 'emotio-team' ) => 'OR',
+							__( 'ALL of them (AND)', 'emotio-team' ) => 'AND',
+						),
+					),
+					array(
 						'type'       => 'textfield',
 						'heading'    => __( 'Limit', 'emotio-team' ),
 						'param_name' => 'limit',
@@ -126,7 +147,9 @@ class ETM_WPBakery {
 						'value'      => array(
 							__( 'Custom order', 'emotio-team' ) => 'menu_order',
 							__( 'Name', 'emotio-team' )         => 'title',
+							__( 'Job title', 'emotio-team' )    => 'job_title',
 							__( 'Newest first', 'emotio-team' ) => 'date',
+							__( 'ID', 'emotio-team' )           => 'id',
 							__( 'Random', 'emotio-team' )       => 'rand',
 						),
 					),
@@ -138,8 +161,33 @@ class ETM_WPBakery {
 							__( 'Open profile modal', 'emotio-team' )       => 'modal',
 							__( 'Slide-out profile panel', 'emotio-team' )  => 'panel',
 							__( 'Go to profile page', 'emotio-team' )       => 'page',
+							__( 'Custom URL (per member)', 'emotio-team' )  => 'custom',
 							__( 'Not clickable', 'emotio-team' )            => 'none',
 						),
+					),
+					array(
+						'type'       => 'checkbox',
+						'heading'    => __( 'Card fields', 'emotio-team' ),
+						'param_name' => 'show_department',
+						'value'      => array( __( 'Show department', 'emotio-team' ) => 'yes' ),
+					),
+					array(
+						'type'       => 'checkbox',
+						'heading'    => '',
+						'param_name' => 'show_email',
+						'value'      => array( __( 'Show email', 'emotio-team' ) => 'yes' ),
+					),
+					array(
+						'type'       => 'checkbox',
+						'heading'    => '',
+						'param_name' => 'show_phone',
+						'value'      => array( __( 'Show phone / mobile', 'emotio-team' ) => 'yes' ),
+					),
+					array(
+						'type'       => 'checkbox',
+						'heading'    => '',
+						'param_name' => 'show_location',
+						'value'      => array( __( 'Show location', 'emotio-team' ) => 'yes' ),
 					),
 					array(
 						'type'       => 'dropdown',
@@ -274,6 +322,33 @@ class ETM_WPBakery {
 						'type'       => 'colorpicker',
 						'heading'    => __( 'Accent colour override', 'emotio-team' ),
 						'param_name' => 'accent',
+					),
+				),
+			)
+		);
+
+		$saved = array( __( '— Select a saved display —', 'emotio-team' ) => '' );
+		if ( class_exists( 'ETM_Generator' ) ) {
+			foreach ( ETM_Generator::displays()['items'] as $display_id => $display ) {
+				$saved[ $display['name'] . ' (#' . $display_id . ')' ] = (string) $display_id;
+			}
+		}
+
+		vc_map(
+			array(
+				'name'        => __( 'Saved Team Display', 'emotio-team' ),
+				'base'        => 'emotio_team_display',
+				'icon'        => 'dashicons dashicons-star-filled',
+				'category'    => 'Emotio',
+				'description' => __( 'A reusable display from the Shortcode Generator', 'emotio-team' ),
+				'params'      => array(
+					array(
+						'type'        => 'dropdown',
+						'heading'     => __( 'Saved display', 'emotio-team' ),
+						'param_name'  => 'id',
+						'value'       => $saved,
+						'admin_label' => true,
+						'description' => __( 'Create and manage saved displays under Team → Shortcode Generator.', 'emotio-team' ),
 					),
 				),
 			)

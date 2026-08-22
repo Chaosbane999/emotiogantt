@@ -42,7 +42,7 @@ class ETM_Import_Export {
 	 * CSV columns, in order. Custom fields are appended as cf_{key}.
 	 */
 	protected static function columns() {
-		$columns = array( 'id', 'name', 'status', 'job_title', 'email', 'phone', 'location', 'pronouns', 'fun_fact', 'departments', 'tags', 'excerpt', 'bio', 'featured', 'order', 'photo_url', 'hover_photo_url' );
+		$columns = array( 'id', 'name', 'status', 'job_title', 'email', 'phone', 'mobile', 'location', 'pronouns', 'fun_fact', 'profile_url', 'departments', 'tags', 'excerpt', 'bio', 'featured', 'order', 'photo_url', 'hover_photo_url' );
 		foreach ( array_keys( ETM_Meta::social_networks() ) as $network ) {
 			$columns[] = $network;
 		}
@@ -288,10 +288,13 @@ class ETM_Import_Export {
 		}
 
 		// Plain profile fields.
-		foreach ( array( 'job_title', 'phone', 'location', 'pronouns', 'fun_fact' ) as $field ) {
+		foreach ( array( 'job_title', 'phone', 'mobile', 'location', 'pronouns', 'fun_fact' ) as $field ) {
 			if ( array_key_exists( $field, $row ) ) {
 				self::set_meta( $post_id, $field, sanitize_text_field( $row[ $field ] ) );
 			}
+		}
+		if ( array_key_exists( 'profile_url', $row ) ) {
+			self::set_meta( $post_id, 'profile_url', esc_url_raw( $row['profile_url'] ) );
 		}
 		if ( array_key_exists( 'email', $row ) ) {
 			self::set_meta( $post_id, 'email', sanitize_email( $row['email'] ) );
