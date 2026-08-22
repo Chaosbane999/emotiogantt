@@ -4,7 +4,7 @@ Tags: team, staff, team members, salient, slider, grid, people
 Requires at least: 5.8
 Tested up to: 6.7
 Requires PHP: 7.4
-Stable tag: 1.1.1
+Stable tag: 1.2.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -22,6 +22,8 @@ Emotio Team gives a Salient (or any WordPress) site a complete, beautifully desi
 * Admin **search that also matches job title, email, phone and location** — not just names.
 * **Drag-and-drop reordering** straight in the list table (the custom order drives every layout).
 * One-click **Duplicate** row action, a Featured flag, and a second **hover photo** per member.
+* **Custom profile fields** — define extra fields once (qualifications, languages, office days…) and every member gets them, shown on profiles and modals.
+* **CSV import/export** — bulk-onboard a whole team from a spreadsheet (photos fetched from URLs), or export everything for backup and bulk edits.
 
 **Placing the team on pages**
 
@@ -86,6 +88,10 @@ Copy `templates/single-team_member.php` or `templates/archive-team_member.php` i
 The plugin keeps working. An expired or missing license only surfaces a notice on the Team admin screens and switches the `etm_is_licensed` filter to false (updates and support are tied to an active license).
 
 == Changelog ==
+
+= 1.2.0 =
+* New: CSV import/export under Team → Import / Export — export every member (all fields, socials, departments, tags, custom fields, photo URLs) for backup or spreadsheet editing; import upserts rows (matched by id, then email, then name), creates departments/tags on the fly, and fetches photos from photo_url / hover_photo_url into the media library. Blank template download included.
+* New: custom profile fields — define any extra fields once under Team → Settings (Qualifications, Languages, Office days…); they appear on every member's edit screen, display as a tidy details list in profile modals, panels and profile pages (URLs and emails auto-link), and round-trip through CSV as cf_* columns. Unknown cf_* columns in an import register themselves automatically.
 
 = 1.1.1 =
 * Fixed: profile photo now always appears in the modal — lazy-load plugins (including Salient's lazy loading) were rewriting the image inside the hidden template so the cloned copy had no src; the profile now uses a plain image tag, de-lazies any rewritten attributes on open, and falls back to the card's photo if anything else strips it.

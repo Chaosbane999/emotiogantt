@@ -489,6 +489,7 @@ class ETM_Shortcode {
 				<?php if ( $job_title ) : ?><p class="etm-detail-role"><?php echo esc_html( $job_title ); ?></p><?php endif; ?>
 				<?php if ( $location ) : ?><p class="etm-detail-meta"><?php echo self::icon( 'pin' ); // phpcs:ignore ?> <?php echo esc_html( $location ); ?></p><?php endif; ?>
 				<?php if ( $bio ) : ?><div class="etm-detail-bio"><?php echo $bio; // phpcs:ignore WordPress.Security.EscapeOutput ?></div><?php endif; ?>
+				<?php self::custom_fields_list( $id ); ?>
 				<?php if ( $fun_fact ) : ?><p class="etm-fun-fact"><strong><?php esc_html_e( 'Fun fact:', 'emotio-team' ); ?></strong> <?php echo esc_html( $fun_fact ); ?></p><?php endif; ?>
 				<div class="etm-detail-actions">
 					<?php if ( $email ) : ?>
@@ -506,6 +507,31 @@ class ETM_Shortcode {
 			</div>
 		</div>
 		<?php
+	}
+
+	/**
+	 * Definition list of a member's custom profile fields.
+	 * Values that look like URLs or email addresses become links.
+	 */
+	public static function custom_fields_list( $post_id ) {
+		$values = ETM_Meta::custom_values( $post_id );
+		if ( ! $values ) {
+			return;
+		}
+		echo '<dl class="etm-cf">';
+		foreach ( $values as $field ) {
+			echo '<dt>' . esc_html( $field['label'] ) . '</dt>';
+			$value = $field['value'];
+			if ( preg_match( '#^https?://#i', $value ) ) {
+				$display = preg_replace( '#^https?://(www\.)?#i', '', untrailingslashit( $value ) );
+				echo '<dd><a href="' . esc_url( $value ) . '" target="_blank" rel="noopener noreferrer">' . esc_html( $display ) . '</a></dd>';
+			} elseif ( is_email( $value ) ) {
+				echo '<dd><a href="mailto:' . esc_attr( $value ) . '">' . esc_html( $value ) . '</a></dd>';
+			} else {
+				echo '<dd>' . esc_html( $value ) . '</dd>';
+			}
+		}
+		echo '</dl>';
 	}
 
 	/**

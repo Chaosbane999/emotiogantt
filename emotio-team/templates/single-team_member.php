@@ -52,6 +52,8 @@ while ( have_posts() ) :
 
 					<div class="etm-profile-bio"><?php the_content(); ?></div>
 
+					<?php ETM_Shortcode::custom_fields_list( $etm_id ); ?>
+
 					<?php if ( $fun_fact ) : ?>
 						<p class="etm-fun-fact"><strong><?php esc_html_e( 'Fun fact:', 'emotio-team' ); ?></strong> <?php echo esc_html( $fun_fact ); ?></p>
 					<?php endif; ?>

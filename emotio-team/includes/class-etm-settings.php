@@ -45,6 +45,7 @@ class ETM_Settings {
 			'bio_color'      => '',
 			'social_size'    => 18,
 			'social_color'   => '',
+			'custom_fields'  => array(),
 			'archive_slug'   => 'team',
 			'enable_single'  => 1,
 			'enable_archive' => 1,
@@ -123,6 +124,8 @@ class ETM_Settings {
 			$out[ $color_key ] = sanitize_hex_color( $input[ $color_key ] ?? '' ) ?: '';
 		}
 
+		$out['custom_fields'] = self::parse_custom_fields( $input['custom_fields_raw'] ?? null, $input['custom_fields'] ?? array() );
+
 		$out['archive_slug']   = sanitize_title( $input['archive_slug'] ?? 'team' ) ?: 'team';
 		$out['enable_single']  = empty( $input['enable_single'] ) ? 0 : 1;
 		$out['enable_archive'] = empty( $input['enable_archive'] ) ? 0 : 1;
@@ -154,6 +157,58 @@ class ETM_Settings {
 		}
 
 		return (bool) apply_filters( 'etm_output_schema', $enabled );
+	}
+
+	/**
+	 * Parse the custom-fields textarea: one field per line, either
+	 * "Label" or "Label | key". Returns array of key => label.
+	 */
+	public static function parse_custom_fields( $raw, $fallback = array() ) {
+		if ( null === $raw ) {
+			return is_array( $fallback ) ? $fallback : array();
+		}
+		$out = array();
+		foreach ( preg_split( '/\r\n|\r|\n/', (string) $raw ) as $line ) {
+			$line = trim( $line );
+			if ( '' === $line ) {
+				continue;
+			}
+			$parts = array_map( 'trim', explode( '|', $line, 2 ) );
+			$label = sanitize_text_field( $parts[0] );
+			$key   = sanitize_title( ! empty( $parts[1] ) ? $parts[1] : $parts[0] );
+			if ( $key && $label && ! isset( $out[ $key ] ) ) {
+				$out[ $key ] = $label;
+			}
+		}
+		return $out;
+	}
+
+	/**
+	 * Defined custom profile fields as key => label.
+	 */
+	public static function custom_fields() {
+		$fields = self::get( 'custom_fields' );
+		return apply_filters( 'etm_custom_fields', is_array( $fields ) ? $fields : array() );
+	}
+
+	/**
+	 * Append field definitions discovered elsewhere (e.g. CSV import).
+	 */
+	public static function register_custom_fields( array $fields ) {
+		$settings = (array) get_option( self::OPTION, array() );
+		$existing = isset( $settings['custom_fields'] ) && is_array( $settings['custom_fields'] ) ? $settings['custom_fields'] : array();
+		$merged   = $existing;
+		foreach ( $fields as $key => $label ) {
+			$key = sanitize_title( $key );
+			if ( $key && ! isset( $merged[ $key ] ) ) {
+				$merged[ $key ] = sanitize_text_field( $label ) ?: ucwords( str_replace( '-', ' ', $key ) );
+			}
+		}
+		if ( $merged !== $existing ) {
+			$settings['custom_fields'] = $merged;
+			update_option( self::OPTION, $settings );
+			self::$settings = null;
+		}
 	}
 
 	/**
@@ -292,6 +347,15 @@ class ETM_Settings {
 						</td>
 					</tr>
 				</table>
+				<h2><?php esc_html_e( 'Custom profile fields', 'emotio-team' ); ?></h2>
+				<p class="description"><?php esc_html_e( 'Extra fields every team member gets — qualifications, languages, office days, anything. One per line as "Label" or "Label | key". They appear on the member edit screen, in profile modals/panels and on profile pages, and travel through CSV import/export as cf_key columns.', 'emotio-team' ); ?></p>
+				<?php
+				$cf_lines = array();
+				foreach ( (array) $s['custom_fields'] as $cf_key => $cf_label ) {
+					$cf_lines[] = $cf_label . ' | ' . $cf_key;
+				}
+				?>
+				<textarea name="<?php echo esc_attr( self::OPTION ); ?>[custom_fields_raw]" rows="5" class="large-text code" placeholder="<?php esc_attr_e( "Qualifications\nLanguages | languages\nOffice days", 'emotio-team' ); ?>"><?php echo esc_textarea( implode( "\n", $cf_lines ) ); ?></textarea>
 				<h2><?php esc_html_e( 'Typography & element colours', 'emotio-team' ); ?></h2>
 				<p class="description"><?php esc_html_e( 'Size 0 / empty colour = inherit from the theme (recommended for a native Salient look). Every value can also be overridden per placement via shortcode attributes (name_size, name_color, title_size, title_color, bio_size, bio_color, social_size, social_color).', 'emotio-team' ); ?></p>
 				<table class="form-table" role="presentation">

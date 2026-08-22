@@ -57,6 +57,25 @@ class ETM_Meta {
 	}
 
 	/**
+	 * Custom profile field values for a member: array of
+	 * [ 'key' => ..., 'label' => ..., 'value' => ... ], non-empty only.
+	 */
+	public static function custom_values( $post_id ) {
+		$out = array();
+		foreach ( ETM_Settings::custom_fields() as $key => $label ) {
+			$value = get_post_meta( $post_id, '_etm_cf_' . $key, true );
+			if ( '' !== $value && null !== $value ) {
+				$out[] = array(
+					'key'   => $key,
+					'label' => $label,
+					'value' => $value,
+				);
+			}
+		}
+		return $out;
+	}
+
+	/**
 	 * All social links for a member, filtered to non-empty values.
 	 */
 	public static function socials( $post_id ) {
@@ -150,6 +169,21 @@ class ETM_Meta {
 				</p>
 			<?php endforeach; ?>
 		</div>
+		<?php $custom = ETM_Settings::custom_fields(); ?>
+		<?php if ( $custom ) : ?>
+			<h4><?php esc_html_e( 'Additional details', 'emotio-team' ); ?></h4>
+			<div class="etm-fields">
+				<?php foreach ( $custom as $key => $label ) : ?>
+					<p class="etm-field">
+						<label for="etm-cf-<?php echo esc_attr( $key ); ?>"><strong><?php echo esc_html( $label ); ?></strong></label><br>
+						<input type="text" class="widefat" id="etm-cf-<?php echo esc_attr( $key ); ?>"
+							name="etm[cf_<?php echo esc_attr( $key ); ?>]"
+							value="<?php echo esc_attr( get_post_meta( $post->ID, '_etm_cf_' . $key, true ) ); ?>">
+					</p>
+				<?php endforeach; ?>
+			</div>
+			<p class="description"><?php esc_html_e( 'These fields are defined under Team → Settings → Custom profile fields and shown on profiles.', 'emotio-team' ); ?></p>
+		<?php endif; ?>
 		<p class="description"><?php esc_html_e( 'The main editor above is the full biography; the excerpt is the short card intro. Both are optional.', 'emotio-team' ); ?></p>
 		<?php
 	}
@@ -199,6 +233,11 @@ class ETM_Meta {
 		foreach ( self::social_networks() as $key => $label ) {
 			$value = isset( $data[ 'social_' . $key ] ) ? esc_url_raw( $data[ 'social_' . $key ] ) : '';
 			self::update( $post_id, 'social_' . $key, $value );
+		}
+
+		foreach ( ETM_Settings::custom_fields() as $key => $label ) {
+			$value = isset( $data[ 'cf_' . $key ] ) ? sanitize_text_field( $data[ 'cf_' . $key ] ) : '';
+			self::update( $post_id, 'cf_' . $key, $value );
 		}
 
 		$hover = isset( $data['hover_image_id'] ) ? absint( $data['hover_image_id'] ) : 0;
