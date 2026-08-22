@@ -50,10 +50,11 @@ Emotio Team gives a Salient (or any WordPress) site a complete, beautifully desi
 
 **Emotio license module**
 
-* Activate your Emotio license key under **Team → License** (or define `ETM_LICENSE_KEY` in `wp-config.php` for agency deployments — the field then locks).
-* Daily automatic re-validation, with a 14-day grace period if the licensing server is unreachable — the plugin never stops working on a client site because of a licensing hiccup.
-* Masked key display, per-site activate/deactivate, status, renewal date and last-checked info.
-* Developers can gate premium behaviour on the `etm_is_licensed` filter, and point at a staging server with the `etm_license_api_url` filter or `ETM_LICENSE_API` constant.
+* Full client for the Emotio License Manager running on emotio-design-group.co.uk (`emotio-license/v1` API): activate `EMOTIO-XXXXX-…` keys, start a 14-day free trial, per-site deactivation, site-limit display and daily re-validation.
+* Responses are Ed25519-signature-verified against the license server's public key when libsodium is available.
+* Offline resilience: the server's signed grace window keeps the site licensed through outages — the plugin never stops working on a client site because of a licensing hiccup.
+* Define `ETM_LICENSE_KEY` in `wp-config.php` for agency deployments (locks the field and auto-activates); point at a staging server with the `ETM_LICENSE_API` constant or `etm_license_api_base` filter; gate premium behaviour on the `etm_is_licensed` filter.
+* Server-side setup: add "Emotio Team | emotio-team" to the products list in the Emotio License Manager on emotio-design-group.co.uk.
 
 == Installation ==
 
