@@ -259,10 +259,12 @@
 					profileCache[key] = data.data.html;
 					showRemoteProfile(data.data.html, mode, styleCss);
 				} else if (onFail) {
+					window.console && console.warn('Emotio Team: profile fetch returned no HTML, using inline fallback', data);
 					onFail();
 				}
 			})
-			.catch(function () {
+			.catch(function (err) {
+				window.console && console.warn('Emotio Team: profile fetch failed, using inline fallback', err);
 				if (onFail) {
 					onFail();
 				}

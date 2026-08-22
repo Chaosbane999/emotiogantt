@@ -3,7 +3,7 @@
  * Plugin Name:       Emotio Team
  * Plugin URI:        https://github.com/chaosbane999/emotiogantt
  * Description:       Best-in-class team member management for Salient-built WordPress sites. Grid and slider layouts, live search and department filtering, WPBakery element, Gutenberg block, profile modals, vCards, Person schema and deep design controls.
- * Version:           1.5.2
+ * Version:           1.5.3
  * Requires at least: 5.8
  * Requires PHP:      7.4
  * Author:            Emotio Design Group
@@ -17,7 +17,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'ETM_VERSION', '1.5.2' );
+define( 'ETM_VERSION', '1.5.3' );
 define( 'ETM_FILE', __FILE__ );
 define( 'ETM_DIR', plugin_dir_path( __FILE__ ) );
 define( 'ETM_URL', plugin_dir_url( __FILE__ ) );

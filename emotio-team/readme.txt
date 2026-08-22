@@ -4,7 +4,7 @@ Tags: team, staff, team members, salient, slider, grid, people
 Requires at least: 5.8
 Tested up to: 6.7
 Requires PHP: 7.4
-Stable tag: 1.5.2
+Stable tag: 1.5.3
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -93,6 +93,11 @@ Copy `templates/single-team_member.php` or `templates/archive-team_member.php` i
 The plugin keeps working. An expired or missing license only surfaces a notice on the Team admin screens and switches the `etm_is_licensed` filter to false (updates and support are tied to an active license).
 
 == Changelog ==
+
+= 1.5.3 =
+* Fixed: profile biography reliability. The bio no longer executes theme/builder shortcodes (which could stall or break the profile endpoint on some setups) — shortcode tags are stripped while their inner text is kept, so builder-authored bios render as clean paragraphs every time.
+* Hardened: the profile endpoint catches any rendering error and returns a proper failure (the front end then falls back to the inline card data), and the browser console now logs a warning whenever the fallback path is used, making future diagnosis instant.
+
 
 = 1.5.2 =
 * Fixed: invisible white-on-white text. Sites with a white/near-white accent colour rendered job titles and the profile modal's contact buttons as white text on white — which also looked like an "empty" slide-out. Buttons and active filter chips now compute a readable text colour from the accent (--etm-on-accent), and when both the accent and card background are near-white, job titles automatically fall back to a dark neutral instead of vanishing. An explicit title colour always wins.

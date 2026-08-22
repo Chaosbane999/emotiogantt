@@ -75,7 +75,12 @@ class ETM_Triggers {
 			wp_send_json_error( array( 'message' => 'not_found' ), 404 );
 		}
 
-		wp_send_json_success( array( 'html' => ETM_Shortcode::detail_html( $post ) ) );
+		try {
+			$html = ETM_Shortcode::detail_html( $post );
+		} catch ( \Throwable $e ) {
+			wp_send_json_error( array( 'message' => 'render_failed' ), 500 );
+		}
+		wp_send_json_success( array( 'html' => $html ) );
 	}
 
 	/**

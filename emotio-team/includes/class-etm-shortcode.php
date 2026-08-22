@@ -848,12 +848,15 @@ class ETM_Shortcode {
 		$pronouns  = ETM_Meta::get( $id, 'pronouns' );
 		$fun_fact  = ETM_Meta::get( $id, 'fun_fact' );
 
-		// Biography: run shortcodes so builder-authored content (WPBakery
-		// rows, Salient elements) renders as text instead of raw tags,
-		// then fall back to the excerpt.
+		// Biography: strip shortcode TAGS but keep the text inside them, so
+		// builder-authored bios (WPBakery rows, Nectar shortcodes) read as
+		// clean paragraphs — and nothing executes, so a theme shortcode can
+		// never break or slow the profile endpoint. Falls back to the excerpt.
 		$bio = '';
-		if ( trim( (string) $post->post_content ) ) {
-			$bio = wp_kses_post( do_shortcode( shortcode_unautop( wpautop( $post->post_content ) ) ) );
+		$raw = trim( (string) $post->post_content );
+		if ( $raw ) {
+			$raw = preg_replace( '/\[\/?[a-zA-Z0-9_\-]+[^\]]*\]/', ' ', $raw );
+			$bio = wp_kses_post( wpautop( trim( $raw ) ) );
 		}
 		if ( ! trim( wp_strip_all_tags( $bio ) ) && has_excerpt( $post ) ) {
 			$bio = '<p>' . esc_html( get_the_excerpt( $post ) ) . '</p>';
