@@ -68,6 +68,16 @@ class ETM_Shortcode {
 			'show_title'     => 'yes',
 			'accent'         => '',
 			'gap'            => '',
+			'spacing'        => ETM_Settings::get( 'spacing' ),
+			'slider_style'   => 'drag',
+			'name_size'      => '',
+			'name_color'     => '',
+			'title_size'     => '',
+			'title_color'    => '',
+			'bio_size'       => '',
+			'bio_color'      => '',
+			'social_size'    => '',
+			'social_color'   => '',
 			'autoplay'       => 'no',
 			'autoplay_speed' => 5000,
 			'class'          => '',
@@ -86,8 +96,9 @@ class ETM_Shortcode {
 		$a['layout']  = in_array( $a['layout'], array( 'grid', 'slider', 'list' ), true ) ? $a['layout'] : 'grid';
 		$a['style']   = in_array( $a['style'], array( 'cards', 'minimal', 'overlay', 'circle' ), true ) ? $a['style'] : 'cards';
 		$a['hover']   = in_array( $a['hover'], array( 'lift', 'zoom', 'swap', 'grayscale', 'none' ), true ) ? $a['hover'] : 'lift';
-		$a['link']    = in_array( $a['link'], array( 'modal', 'page', 'none' ), true ) ? $a['link'] : 'modal';
-		$a['columns'] = max( 1, min( 6, absint( $a['columns'] ) ) );
+		$a['link']         = in_array( $a['link'], array( 'modal', 'panel', 'page', 'none' ), true ) ? $a['link'] : 'modal';
+		$a['slider_style'] = in_array( $a['slider_style'], array( 'drag', 'paged' ), true ) ? $a['slider_style'] : 'drag';
+		$a['columns']      = max( 1, min( 6, absint( $a['columns'] ) ) );
 
 		if ( 'page' === $a['link'] && ! ETM_Settings::get( 'enable_single' ) ) {
 			$a['link'] = 'modal';
@@ -114,16 +125,30 @@ class ETM_Shortcode {
 		if ( defined( 'NECTAR_THEME_NAME' ) || wp_get_theme()->get_template() === 'salient' ) {
 			$classes[] = 'etm--salient';
 		}
+		if ( $is_slider && 'drag' === $a['slider_style'] ) {
+			$classes[] = 'etm--drag';
+		}
 		if ( $a['class'] ) {
 			$classes[] = sanitize_html_class( $a['class'] );
 		}
 
 		$style_attr = '';
-		if ( $a['accent'] && sanitize_hex_color( $a['accent'] ) ) {
-			$style_attr .= '--etm-accent:' . sanitize_hex_color( $a['accent'] ) . ';';
+		if ( self::css_color( $a['accent'] ) ) {
+			$style_attr .= '--etm-accent:' . self::css_color( $a['accent'] ) . ';';
 		}
 		if ( '' !== $a['gap'] ) {
 			$style_attr .= '--etm-gap:' . absint( $a['gap'] ) . 'px;';
+		}
+		if ( ETM_Settings::get( 'spacing' ) !== $a['spacing'] ) {
+			$style_attr .= '--etm-el-gap:' . ETM_Settings::spacing_value( $a['spacing'] ) . ';';
+		}
+		foreach ( array( 'name', 'title', 'bio', 'social' ) as $el ) {
+			if ( '' !== $a[ $el . '_size' ] && is_numeric( $a[ $el . '_size' ] ) && (int) $a[ $el . '_size' ] > 0 ) {
+				$style_attr .= '--etm-' . $el . '-size:' . absint( $a[ $el . '_size' ] ) . 'px;';
+			}
+			if ( self::css_color( $a[ $el . '_color' ] ) ) {
+				$style_attr .= '--etm-' . $el . '-color:' . self::css_color( $a[ $el . '_color' ] ) . ';';
+			}
 		}
 
 		$schema_people = array();
@@ -136,13 +161,27 @@ class ETM_Shortcode {
 			data-etm
 			data-layout="<?php echo esc_attr( $a['layout'] ); ?>"
 			data-columns="<?php echo esc_attr( $a['columns'] ); ?>"
+			data-link="<?php echo esc_attr( $a['link'] ); ?>"
+			<?php if ( $is_slider ) : ?>
+				data-slider="<?php echo esc_attr( $a['slider_style'] ); ?>"
+			<?php endif; ?>
 			<?php if ( $is_slider && 'yes' === $a['autoplay'] ) : ?>
 				data-autoplay="<?php echo esc_attr( max( 2000, absint( $a['autoplay_speed'] ) ) ); ?>"
 			<?php endif; ?>>
 
 			<?php self::toolbar( $a, $members ); ?>
 
-			<?php if ( $is_slider ) : ?>
+			<?php if ( $is_slider && 'drag' === $a['slider_style'] ) : ?>
+				<div class="etm-slider">
+					<button type="button" class="etm-arrow etm-arrow--prev" aria-label="<?php esc_attr_e( 'Previous team members', 'emotio-team' ); ?>"><?php echo self::icon( 'chevron-left' ); // phpcs:ignore ?></button>
+					<div class="etm-viewport" tabindex="0" aria-label="<?php esc_attr_e( 'Team members — drag to browse', 'emotio-team' ); ?>">
+						<div class="etm-track etm-track--drag">
+							<?php self::cards( $members, $a, $schema_people ); ?>
+						</div>
+					</div>
+					<button type="button" class="etm-arrow etm-arrow--next" aria-label="<?php esc_attr_e( 'Next team members', 'emotio-team' ); ?>"><?php echo self::icon( 'chevron-right' ); // phpcs:ignore ?></button>
+				</div>
+			<?php elseif ( $is_slider ) : ?>
 				<div class="etm-slider">
 					<button type="button" class="etm-arrow etm-arrow--prev" aria-label="<?php esc_attr_e( 'Previous team members', 'emotio-team' ); ?>"><?php echo self::icon( 'chevron-left' ); // phpcs:ignore ?></button>
 					<div class="etm-track" tabindex="0" aria-label="<?php esc_attr_e( 'Team members carousel', 'emotio-team' ); ?>">
@@ -166,6 +205,21 @@ class ETM_Shortcode {
 		wp_reset_postdata();
 
 		return ob_get_clean();
+	}
+
+	/**
+	 * Sanitize a colour value: hex or rgb()/rgba() (WPBakery pickers emit
+	 * both). Returns '' when the value is not a safe colour.
+	 */
+	protected static function css_color( $value ) {
+		$value = trim( (string) $value );
+		if ( ! $value ) {
+			return '';
+		}
+		if ( sanitize_hex_color( $value ) ) {
+			return sanitize_hex_color( $value );
+		}
+		return preg_match( '/^rgba?\(\s*[\d.]+%?\s*,\s*[\d.]+%?\s*,\s*[\d.]+%?\s*(,\s*[\d.]+\s*)?\)$/', $value ) ? $value : '';
 	}
 
 	/**
@@ -321,7 +375,7 @@ class ETM_Shortcode {
 		);
 
 		$clickable = 'none' !== $a['link'];
-		$is_modal  = 'modal' === $a['link'];
+		$is_modal  = in_array( $a['link'], array( 'modal', 'panel' ), true );
 		?>
 		<div class="etm-item" data-search="<?php echo esc_attr( $search_blob ); ?>" data-departments="<?php echo esc_attr( implode( ' ', $dept_slugs ) ); ?>">
 			<article class="etm-card" <?php echo $is_modal ? 'data-modal-source' : ''; ?>>

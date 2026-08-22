@@ -4,7 +4,7 @@ Tags: team, staff, team members, salient, slider, grid, people
 Requires at least: 5.8
 Tested up to: 6.7
 Requires PHP: 7.4
-Stable tag: 1.0.0
+Stable tag: 1.1.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -86,6 +86,14 @@ Copy `templates/single-team_member.php` or `templates/archive-team_member.php` i
 The plugin keeps working. An expired or missing license only surfaces a notice on the Team admin screens and switches the `etm_is_licensed` filter to false (updates and support are tied to an active license).
 
 == Changelog ==
+
+= 1.1.0 =
+* New: slide-out profile panel (link="panel") — a drawer that slides in from the right, as an alternative to the centred modal.
+* New: drag/swipe momentum slider (slider_style="drag", now the default) matching the Emotio Area Pro track — mouse drag, touch swipe, trackpad and arrow keys; slider_style="paged" keeps the arrows-and-dots version.
+* New: per-element typography and colour controls — font size and colour for Name, Job title, Snippet and Social icons, site-wide in Settings and per placement (name_size, name_color, title_size, title_color, bio_size, bio_color, social_size, social_color).
+* New: element spacing control — tight / normal / spaced presets or an exact pixel value (spacing attribute), controlling the gaps between name, title, snippet and socials.
+* Fixed: modal photos now reduce to fit their area, centred, never cropped.
+* License module now targets the Emotio License Manager on emotio-design-group.co.uk, with Ed25519-verified responses and free trials.
 
 = 1.0.0 =
 * Initial release.

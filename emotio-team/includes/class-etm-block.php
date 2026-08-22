@@ -46,6 +46,16 @@ class ETM_Block {
 					'showSocial' => array( 'type' => 'boolean', 'default' => true ),
 					'showBio'    => array( 'type' => 'boolean', 'default' => false ),
 					'accent'     => array( 'type' => 'string', 'default' => '' ),
+					'sliderStyle' => array( 'type' => 'string', 'default' => 'drag' ),
+					'spacing'     => array( 'type' => 'string', 'default' => ETM_Settings::get( 'spacing' ) ),
+					'nameSize'    => array( 'type' => 'string', 'default' => '' ),
+					'nameColor'   => array( 'type' => 'string', 'default' => '' ),
+					'titleSize'   => array( 'type' => 'string', 'default' => '' ),
+					'titleColor'  => array( 'type' => 'string', 'default' => '' ),
+					'bioSize'     => array( 'type' => 'string', 'default' => '' ),
+					'bioColor'    => array( 'type' => 'string', 'default' => '' ),
+					'socialSize'  => array( 'type' => 'string', 'default' => '' ),
+					'socialColor' => array( 'type' => 'string', 'default' => '' ),
 				),
 			)
 		);
@@ -69,6 +79,16 @@ class ETM_Block {
 				'show_social' => ! empty( $attributes['showSocial'] ) ? 'yes' : 'no',
 				'show_bio'    => ! empty( $attributes['showBio'] ) ? 'yes' : 'no',
 				'accent'      => $attributes['accent'] ?? '',
+				'slider_style' => $attributes['sliderStyle'] ?? 'drag',
+				'spacing'      => $attributes['spacing'] ?? 'normal',
+				'name_size'    => $attributes['nameSize'] ?? '',
+				'name_color'   => $attributes['nameColor'] ?? '',
+				'title_size'   => $attributes['titleSize'] ?? '',
+				'title_color'  => $attributes['titleColor'] ?? '',
+				'bio_size'     => $attributes['bioSize'] ?? '',
+				'bio_color'    => $attributes['bioColor'] ?? '',
+				'social_size'  => $attributes['socialSize'] ?? '',
+				'social_color' => $attributes['socialColor'] ?? '',
 			)
 		);
 	}

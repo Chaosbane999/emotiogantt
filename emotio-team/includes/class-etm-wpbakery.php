@@ -54,6 +54,16 @@ class ETM_WPBakery {
 					),
 					array(
 						'type'       => 'dropdown',
+						'heading'    => __( 'Slider style', 'emotio-team' ),
+						'param_name' => 'slider_style',
+						'value'      => array(
+							__( 'Drag / swipe with momentum (Area Pro style)', 'emotio-team' ) => 'drag',
+							__( 'Paged with arrows & dots', 'emotio-team' )                    => 'paged',
+						),
+						'dependency' => array( 'element' => 'layout', 'value' => 'slider' ),
+					),
+					array(
+						'type'       => 'dropdown',
 						'heading'    => __( 'Columns', 'emotio-team' ),
 						'param_name' => 'columns',
 						'value'      => array( '3' => '3', '2' => '2', '4' => '4', '5' => '5', '6' => '6', '1' => '1' ),
@@ -117,10 +127,22 @@ class ETM_WPBakery {
 						'heading'    => __( 'Card click', 'emotio-team' ),
 						'param_name' => 'link',
 						'value'      => array(
-							__( 'Open profile modal', 'emotio-team' ) => 'modal',
-							__( 'Go to profile page', 'emotio-team' ) => 'page',
-							__( 'Not clickable', 'emotio-team' )      => 'none',
+							__( 'Open profile modal', 'emotio-team' )       => 'modal',
+							__( 'Slide-out profile panel', 'emotio-team' )  => 'panel',
+							__( 'Go to profile page', 'emotio-team' )       => 'page',
+							__( 'Not clickable', 'emotio-team' )            => 'none',
 						),
+					),
+					array(
+						'type'       => 'dropdown',
+						'heading'    => __( 'Element spacing', 'emotio-team' ),
+						'param_name' => 'spacing',
+						'value'      => array(
+							__( 'Normal', 'emotio-team' ) => 'normal',
+							__( 'Tight', 'emotio-team' )  => 'tight',
+							__( 'Spaced', 'emotio-team' ) => 'spaced',
+						),
+						'description' => __( 'Gap between name, title, snippet and socials. Edit the shortcode for an exact pixel value.', 'emotio-team' ),
 					),
 					array(
 						'type'       => 'checkbox',
@@ -182,6 +204,14 @@ class ETM_WPBakery {
 						'param_name' => 'class',
 						'group'      => __( 'Design', 'emotio-team' ),
 					),
+					array( 'type' => 'textfield', 'heading' => __( 'Name font size (px)', 'emotio-team' ), 'param_name' => 'name_size', 'group' => __( 'Typography', 'emotio-team' ), 'description' => __( 'Empty = inherit from theme.', 'emotio-team' ) ),
+					array( 'type' => 'colorpicker', 'heading' => __( 'Name colour', 'emotio-team' ), 'param_name' => 'name_color', 'group' => __( 'Typography', 'emotio-team' ) ),
+					array( 'type' => 'textfield', 'heading' => __( 'Job title font size (px)', 'emotio-team' ), 'param_name' => 'title_size', 'group' => __( 'Typography', 'emotio-team' ) ),
+					array( 'type' => 'colorpicker', 'heading' => __( 'Job title colour', 'emotio-team' ), 'param_name' => 'title_color', 'group' => __( 'Typography', 'emotio-team' ) ),
+					array( 'type' => 'textfield', 'heading' => __( 'Snippet font size (px)', 'emotio-team' ), 'param_name' => 'bio_size', 'group' => __( 'Typography', 'emotio-team' ) ),
+					array( 'type' => 'colorpicker', 'heading' => __( 'Snippet colour', 'emotio-team' ), 'param_name' => 'bio_color', 'group' => __( 'Typography', 'emotio-team' ) ),
+					array( 'type' => 'textfield', 'heading' => __( 'Social icon size (px)', 'emotio-team' ), 'param_name' => 'social_size', 'group' => __( 'Typography', 'emotio-team' ) ),
+					array( 'type' => 'colorpicker', 'heading' => __( 'Social icon colour', 'emotio-team' ), 'param_name' => 'social_color', 'group' => __( 'Typography', 'emotio-team' ) ),
 				),
 			)
 		);

@@ -48,6 +48,25 @@
 							],
 							onChange: function (v) { set({ layout: v }); }
 						}),
+						a.layout === 'slider' && el(SelectControl, {
+							label: __('Slider style', 'emotio-team'),
+							value: a.sliderStyle,
+							options: [
+								{ label: __('Drag / swipe with momentum', 'emotio-team'), value: 'drag' },
+								{ label: __('Paged with arrows & dots', 'emotio-team'), value: 'paged' }
+							],
+							onChange: function (v) { set({ sliderStyle: v }); }
+						}),
+						el(SelectControl, {
+							label: __('Element spacing', 'emotio-team'),
+							value: a.spacing,
+							options: [
+								{ label: __('Tight', 'emotio-team'), value: 'tight' },
+								{ label: __('Normal', 'emotio-team'), value: 'normal' },
+								{ label: __('Spaced', 'emotio-team'), value: 'spaced' }
+							],
+							onChange: function (v) { set({ spacing: v }); }
+						}),
 						el(RangeControl, {
 							label: __('Columns', 'emotio-team'),
 							min: 1,
@@ -152,6 +171,7 @@
 							value: a.link,
 							options: [
 								{ label: __('Open profile modal', 'emotio-team'), value: 'modal' },
+								{ label: __('Slide-out profile panel', 'emotio-team'), value: 'panel' },
 								{ label: __('Go to profile page', 'emotio-team'), value: 'page' },
 								{ label: __('Not clickable', 'emotio-team'), value: 'none' }
 							],
@@ -163,6 +183,18 @@
 							value: a.accent,
 							onChange: function (v) { set({ accent: v }); }
 						})
+					),
+					el(
+						PanelBody,
+						{ title: __('Typography & colours', 'emotio-team'), initialOpen: false },
+						el(TextControl, { label: __('Name size (px)', 'emotio-team'), placeholder: __('inherit', 'emotio-team'), value: a.nameSize, onChange: function (v) { set({ nameSize: v }); } }),
+						el(TextControl, { label: __('Name colour (hex)', 'emotio-team'), placeholder: __('inherit', 'emotio-team'), value: a.nameColor, onChange: function (v) { set({ nameColor: v }); } }),
+						el(TextControl, { label: __('Job title size (px)', 'emotio-team'), placeholder: __('inherit', 'emotio-team'), value: a.titleSize, onChange: function (v) { set({ titleSize: v }); } }),
+						el(TextControl, { label: __('Job title colour (hex)', 'emotio-team'), placeholder: __('accent', 'emotio-team'), value: a.titleColor, onChange: function (v) { set({ titleColor: v }); } }),
+						el(TextControl, { label: __('Snippet size (px)', 'emotio-team'), placeholder: __('inherit', 'emotio-team'), value: a.bioSize, onChange: function (v) { set({ bioSize: v }); } }),
+						el(TextControl, { label: __('Snippet colour (hex)', 'emotio-team'), placeholder: __('inherit', 'emotio-team'), value: a.bioColor, onChange: function (v) { set({ bioColor: v }); } }),
+						el(TextControl, { label: __('Social icon size (px)', 'emotio-team'), placeholder: '18', value: a.socialSize, onChange: function (v) { set({ socialSize: v }); } }),
+						el(TextControl, { label: __('Social icon colour (hex)', 'emotio-team'), placeholder: __('inherit', 'emotio-team'), value: a.socialColor, onChange: function (v) { set({ socialColor: v }); } })
 					)
 				),
 				el(ServerSideRender, {

@@ -57,8 +57,9 @@
 			return;
 		}
 		buildModal();
-		// Carry the instance's design tokens (accent etc.) into the modal.
+		// Carry the instance's design tokens (accent, typography…) into the modal.
 		modal.style.cssText = instance.getAttribute('style') || '';
+		modal.classList.toggle('etm-modal--drawer', instance.getAttribute('data-link') === 'panel');
 		modal.querySelector('.etm-modal-content').innerHTML = '';
 		modal.querySelector('.etm-modal-content').appendChild(template.content.cloneNode(true));
 
@@ -70,6 +71,8 @@
 
 		lastTrigger = document.activeElement;
 		modal.hidden = false;
+		void modal.offsetWidth; // Force a layout so the open transition runs.
+		modal.classList.add('is-open');
 		document.body.style.overflow = 'hidden';
 		modal.querySelector('.etm-modal-close').focus();
 	}
@@ -78,7 +81,11 @@
 		if (!modal || modal.hidden) {
 			return;
 		}
-		modal.hidden = true;
+		modal.classList.remove('is-open');
+		var delay = reducedMotion ? 0 : 420;
+		setTimeout(function () {
+			modal.hidden = true;
+		}, delay);
 		document.body.style.overflow = '';
 		if (lastTrigger && lastTrigger.focus) {
 			lastTrigger.focus();
@@ -157,7 +164,110 @@
 		}
 	}
 
-	/* ------------------------------------------------------------ slider */
+	/* ---------------------------------- drag / momentum slider (Area Pro) */
+
+	function initDragTrack(instance) {
+		var viewport = instance.querySelector('.etm-viewport');
+		var rail = instance.querySelector('.etm-track');
+		if (!viewport || !rail) {
+			return;
+		}
+		var prev = instance.querySelector('.etm-arrow--prev');
+		var next = instance.querySelector('.etm-arrow--next');
+		var x = 0, min = 0, startX = 0, lastX = 0, v = 0, down = false, raf = null, dragged = false;
+
+		viewport.addEventListener('dragstart', function (e) {
+			e.preventDefault();
+		});
+
+		function clamp() {
+			min = Math.min(0, viewport.clientWidth - rail.scrollWidth);
+			if (x < min) { x = min; }
+			if (x > 0) { x = 0; }
+		}
+		function paint() {
+			rail.style.transform = 'translate3d(' + x + 'px,0,0)';
+			if (prev) { prev.disabled = x >= -2; }
+			if (next) { next.disabled = x <= min + 2; }
+		}
+		function momentum() {
+			if (Math.abs(v) < 0.3) { raf = null; return; }
+			x += v;
+			v *= 0.94;
+			clamp();
+			paint();
+			raf = requestAnimationFrame(momentum);
+		}
+		function throwTo(dir) {
+			if (raf) { cancelAnimationFrame(raf); }
+			v = dir * Math.max(22, viewport.clientWidth * 0.05);
+			raf = requestAnimationFrame(momentum);
+		}
+
+		viewport.addEventListener('pointerdown', function (e) {
+			down = true;
+			dragged = false;
+			startX = lastX = e.clientX;
+			v = 0;
+			if (raf) { cancelAnimationFrame(raf); raf = null; }
+			window.addEventListener('pointermove', move, { passive: false });
+			window.addEventListener('pointerup', up, true);
+			window.addEventListener('pointercancel', up, true);
+		});
+		function move(e) {
+			if (!down) { return; }
+			var dx = e.clientX - lastX;
+			lastX = e.clientX;
+			if (!dragged && Math.abs(e.clientX - startX) > 6) {
+				dragged = true;
+				instance._dragging = true;
+			}
+			if (dragged && e.cancelable) { e.preventDefault(); }
+			x += dx;
+			v = dx;
+			clamp();
+			paint();
+		}
+		function up() {
+			window.removeEventListener('pointermove', move, { passive: false });
+			window.removeEventListener('pointerup', up, true);
+			window.removeEventListener('pointercancel', up, true);
+			if (!down) { return; }
+			down = false;
+			raf = requestAnimationFrame(momentum);
+			setTimeout(function () { instance._dragging = false; }, 60);
+		}
+
+		viewport.addEventListener('keydown', function (e) {
+			if (e.key === 'ArrowRight') { x -= 140; } else if (e.key === 'ArrowLeft') { x += 140; } else { return; }
+			clamp();
+			paint();
+			e.preventDefault();
+		});
+		// Trackpad: two-finger horizontal scroll (and shift+wheel) drives the track.
+		viewport.addEventListener('wheel', function (e) {
+			var dx = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : (e.shiftKey ? e.deltaY : 0);
+			if (!dx) { return; }
+			e.preventDefault();
+			if (raf) { cancelAnimationFrame(raf); raf = null; }
+			v = 0;
+			x -= dx;
+			clamp();
+			paint();
+		}, { passive: false });
+
+		if (prev) { prev.addEventListener('click', function () { throwTo(1); }); }
+		if (next) { next.addEventListener('click', function () { throwTo(-1); }); }
+		window.addEventListener('resize', debounce(function () { clamp(); paint(); }, 150));
+
+		instance._slider = {
+			refresh: function () { clamp(); paint(); }
+		};
+		clamp();
+		paint();
+	}
+
+	/* ---------------------------------------------------- paged slider */
 
 	function initSlider(instance) {
 		var track = instance.querySelector('.etm-track');
@@ -334,11 +444,20 @@
 
 		initToolbar(instance);
 		if (instance.getAttribute('data-layout') === 'slider') {
-			initSlider(instance);
+			if (instance.getAttribute('data-slider') === 'drag') {
+				initDragTrack(instance);
+			} else {
+				initSlider(instance);
+			}
 		}
 		initReveal(instance);
 
 		instance.addEventListener('click', function (e) {
+			if (instance._dragging) {
+				e.preventDefault();
+				e.stopPropagation();
+				return;
+			}
 			var trigger = e.target.closest('[data-etm-open]');
 			if (trigger) {
 				var item = trigger.closest('.etm-item');
@@ -346,7 +465,7 @@
 					openModal(item, instance);
 				}
 			}
-		});
+		}, true);
 	}
 
 	function initAll() {
