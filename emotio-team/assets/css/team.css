@@ -792,6 +792,19 @@
 	font-size: 0.95em;
 	line-height: 1.7;
 }
+/* Builder-authored bios can carry theme animation wrappers (Salient's
+   entrance animations leave columns at opacity:0 until a scroll reveal
+   that never fires inside an overlay). Force everything visible. */
+.etm-detail-bio,
+.etm-detail-bio * {
+	opacity: 1 !important;
+	visibility: visible !important;
+	transform: none !important;
+	animation: none !important;
+	position: static !important;
+	left: auto !important;
+	top: auto !important;
+}
 .etm-cf {
 	display: grid;
 	grid-template-columns: minmax(110px, auto) 1fr;

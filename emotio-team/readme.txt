@@ -4,7 +4,7 @@ Tags: team, staff, team members, salient, slider, grid, people
 Requires at least: 5.8
 Tested up to: 6.7
 Requires PHP: 7.4
-Stable tag: 1.5.5
+Stable tag: 1.5.6
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -93,6 +93,10 @@ Copy `templates/single-team_member.php` or `templates/archive-team_member.php` i
 The plugin keeps working. An expired or missing license only surfaces a notice on the Team admin screens and switches the `etm_is_licensed` filter to false (updates and support are tied to an active license).
 
 == Changelog ==
+
+= 1.5.6 =
+* Fixed: biographies authored with the page builder were rendering invisibly in the profile modal/slide-out — Salient's entrance animations leave builder columns at opacity 0 until a scroll reveal that never fires inside an overlay. The profile now strips builder wrapper markup down to clean text-level tags, and a CSS guard forces everything inside the bio visible. Diagnosed and verified live against staging.
+
 
 = 1.5.5 =
 * Fixed: the profile slide-out/modal now scrolls on themes with page-level smooth scrolling (Salient's smooth scroll hijacks the mouse wheel, so the page behind scrolled while the panel stayed frozen — making long bios unreachable). The overlay now routes wheel input straight into the panel, hard-locks the page behind it (position-fixed body, restored on close), and contains touch scrolling. Verified against a simulated wheel-hijacking theme in a real browser.

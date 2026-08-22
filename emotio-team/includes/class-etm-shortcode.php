@@ -900,7 +900,32 @@ class ETM_Shortcode {
 		$raw = trim( (string) $post->post_content );
 		if ( $raw ) {
 			$raw = preg_replace( '/\[\/?[a-zA-Z0-9_\-]+[^\]]*\]/', ' ', $raw );
-			$bio = wp_kses_post( wpautop( trim( $raw ) ) );
+			// Text-level tags only: builder wrapper divs (and their theme
+			// animation classes, which hide content until scroll reveals
+			// that never fire inside an overlay) are stripped entirely.
+			$bio = wp_kses(
+				wpautop( trim( $raw ) ),
+				array(
+					'p'          => array(),
+					'br'         => array(),
+					'strong'     => array(),
+					'b'          => array(),
+					'em'         => array(),
+					'i'          => array(),
+					'u'          => array(),
+					'a'          => array( 'href' => true, 'target' => true, 'rel' => true, 'title' => true ),
+					'ul'         => array(),
+					'ol'         => array(),
+					'li'         => array(),
+					'blockquote' => array(),
+					'h2'         => array(),
+					'h3'         => array(),
+					'h4'         => array(),
+					'h5'         => array(),
+					'h6'         => array(),
+					'span'       => array(),
+				)
+			);
 		}
 		if ( ! trim( wp_strip_all_tags( $bio ) ) && has_excerpt( $post ) ) {
 			$bio = '<p>' . esc_html( get_the_excerpt( $post ) ) . '</p>';
