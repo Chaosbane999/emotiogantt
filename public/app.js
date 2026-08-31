@@ -446,6 +446,7 @@
             `<option value="${s.id}" ${s.id === snapId ? 'selected' : ''}>vs ${esc(s.name)}</option>`).join('')}
         </select>
         <button class="btn small" id="saveSnap" title="Save today's plan so you can compare later">📸 Snapshot</button>
+        <button class="btn small" id="aiEdit" title="Describe a change in plain words and review before it's applied">✨ AI Edit</button>
         <div class="zoom-toggle">
           <button data-z="day" class="${ganttZoom === 'day' ? 'active' : ''}">Day</button>
           <button data-z="week" class="${ganttZoom === 'week' ? 'active' : ''}">Week</button>
@@ -476,6 +477,7 @@
       route();
     });
     view.querySelector('#saveSnap').addEventListener('click', () => snapshotDialog(p));
+    view.querySelector('#aiEdit').addEventListener('click', () => aiEditDialog(p));
 
     if (!allTasks.length) {
       document.getElementById('ganttHost').innerHTML =
@@ -1220,11 +1222,124 @@ The project is: [describe your project here]`;
     }
   }
 
+  // ----- AI Edit: describe a change, review the plan, apply -----
+  function aiEditDialog(p) {
+    const taskName = (ref) => {
+      if (typeof ref === 'number' || /^\d+$/.test(String(ref))) {
+        const t = S.tasks.find(x => x.id === Number(ref));
+        return t ? t.name : `#${ref}`;
+      }
+      return String(ref); // a task being created in this same plan
+    };
+    const describeOp = (o) => {
+      if (o.op === 'create_task') {
+        const bits = [`${o.start}${o.end && o.end !== o.start ? ' → ' + o.end : ''}`];
+        if (o.person) bits.push(o.person);
+        if (o.parent !== null && o.parent !== undefined) bits.push(`in “${esc(taskName(o.parent))}”`);
+        if ((o.depends_on || []).length) bits.push(`after ${o.depends_on.map(d => `“${esc(taskName(d))}”`).join(', ')}`);
+        return `➕ Add ${o.milestone ? 'milestone' : 'task'} <strong>${esc(o.name)}</strong> · ${bits.join(' · ')}`;
+      }
+      if (o.op === 'update_task') {
+        const f = o.fields || {};
+        const bits = Object.entries(f).map(([k, v]) => `${k} → ${esc(String(v ?? '—'))}`);
+        return `✏️ Change <strong>${esc(taskName(o.task_id))}</strong>: ${bits.join(', ')}`;
+      }
+      if (o.op === 'delete_task') return `🗑 Delete <strong>${esc(taskName(o.task_id))}</strong>`;
+      if (o.op === 'add_dependency') return `🔗 “${esc(taskName(o.succ))}” will depend on “${esc(taskName(o.pred))}”`;
+      if (o.op === 'remove_dependency') return `✂️ Unlink “${esc(taskName(o.succ))}” from “${esc(taskName(o.pred))}”`;
+      if (o.op === 'update_project') return `📋 Project: ${Object.entries(o.fields || {}).map(([k, v]) => `${k} → ${esc(String(v ?? '—'))}`).join(', ')}`;
+      return esc(o.op);
+    };
+
+    let lastPrompt = '';
+    promptForm();
+
+    function promptForm() {
+      openPanel(`
+        <h3>✨ AI Edit</h3>
+        <p class="muted" style="font-size:13px;margin:6px 0 0">Describe the change in plain words.
+          You'll see exactly what it wants to do before anything is touched, and a snapshot is
+          taken automatically when you apply.</p>
+        <label>What should change?</label>
+        <textarea id="ae_prompt" rows="6" placeholder="e.g. Lukasz is off next week — adjust his tasks and whatever depends on them.
+
+or: Add these tasks under the Development phase with sensible durations and dependencies: …"></textarea>
+        <div class="panel-actions">
+          <button class="btn primary grow" id="ae_go">Propose changes</button>
+          <button class="btn" id="ae_cancel">Cancel</button>
+        </div>
+        <p id="ae_err" class="err hidden"></p>`);
+      panel.querySelector('#ae_cancel').addEventListener('click', closePanel);
+      panel.querySelector('#ae_go').addEventListener('click', () => {
+        lastPrompt = panel.querySelector('#ae_prompt').value.trim();
+        if (lastPrompt) propose({ project_id: p.id, prompt: lastPrompt });
+      });
+    }
+
+    async function propose(body) {
+      const go = panel.querySelector('#ae_go') || panel.querySelector('#ae_amend_go');
+      if (go) { go.disabled = true; go.textContent = 'Thinking…'; }
+      try {
+        const r = await api('POST', '/api/ai-edit', body);
+        preview(r);
+      } catch (e) {
+        const err = panel.querySelector('#ae_err');
+        if (err) {
+          err.textContent = 'The AI call failed: ' + friendlyApiError(e);
+          err.classList.remove('hidden');
+        }
+        if (go) { go.disabled = false; go.textContent = go.id === 'ae_go' ? 'Propose changes' : 'Apply amendment'; }
+      }
+    }
+
+    function preview({ summary, operations, warnings }) {
+      openPanel(`
+        <h3>Proposed changes</h3>
+        <p class="muted" style="font-size:13px;margin:6px 0 0">${esc(summary || '')}</p>
+        ${(warnings || []).length ? `<div class="dep-row" style="display:block;color:var(--watch)">${warnings.map(esc).join('<br>')}</div>` : ''}
+        <div style="max-height:300px;overflow-y:auto;margin-top:10px">
+          ${operations.length ? operations.map(o =>
+            `<div class="dep-row" style="display:block;font-size:13px">${describeOp(o)}</div>`).join('')
+            : '<p class="muted">No changes proposed.</p>'}
+        </div>
+        <label>Amendments (optional)</label>
+        <textarea id="ae_amend" rows="2" placeholder="e.g. don't touch the milestones, and keep it inside September"></textarea>
+        <div class="panel-actions">
+          <button class="btn" id="ae_amend_go">Apply amendment</button>
+          <button class="btn primary grow" id="ae_apply" ${operations.length ? '' : 'disabled'}>Apply ${operations.length} change${operations.length === 1 ? '' : 's'}</button>
+          <button class="btn" id="ae_cancel2">Cancel</button>
+        </div>
+        <p id="ae_err" class="err hidden"></p>`);
+      panel.querySelector('#ae_cancel2').addEventListener('click', closePanel);
+      panel.querySelector('#ae_amend_go').addEventListener('click', () => {
+        const amendment = panel.querySelector('#ae_amend').value.trim();
+        if (amendment) propose({ project_id: p.id, prompt: lastPrompt, operations, amendment });
+      });
+      panel.querySelector('#ae_apply').addEventListener('click', async () => {
+        const btn = panel.querySelector('#ae_apply');
+        btn.disabled = true; btn.textContent = 'Applying…';
+        try {
+          const r = await api('POST', '/api/ai-edit/apply',
+            { project_id: p.id, operations, summary });
+          closePanel();
+          await reload();
+          route();
+          toast(`Applied ${r.applied} change${r.applied === 1 ? '' : 's'} — snapshot saved first, compare via the “vs” menu to review.`);
+        } catch (e) {
+          const err = panel.querySelector('#ae_err');
+          err.textContent = friendlyApiError(e);
+          err.classList.remove('hidden');
+          btn.disabled = false; btn.textContent = 'Apply changes';
+        }
+      });
+    }
+  }
+
   // ----- Activity (audit trail) -----
   const AUDIT_VERBS = { create: 'created', update: 'updated', delete: 'deleted',
     reorder: 'reordered', login: 'signed in', set_login: 'set login for',
     remove_login: 'removed login for', set_members: 'changed access for',
-    change_password: 'changed their password' };
+    change_password: 'changed their password', ai_edit: 'ran an AI edit on' };
   function describeAudit(a) {
     let detail = {};
     try { detail = JSON.parse(a.detail || '{}'); } catch (e) {}

@@ -487,6 +487,204 @@ Rules:
   }
 });
 
+// ---- AI edit: propose a change plan for an existing project, then apply it ----
+function projectContext(pid) {
+  const p = db.prepare('SELECT * FROM projects WHERE id=?').get(pid);
+  const pn = new Map(db.prepare('SELECT id, name FROM people').all().map(x => [x.id, x.name]));
+  return {
+    today: new Date().toISOString().slice(0, 10),
+    project: { name: p.name, due_date: p.due_date, notes: p.notes || null },
+    people: [...pn.values()],
+    tasks: db.prepare('SELECT * FROM tasks WHERE project_id=? ORDER BY sort_order').all(pid)
+      .map(t => ({ id: t.id, name: t.name, start: t.start, end: t.end,
+        person: pn.get(t.person_id) || null, parent_id: t.parent_id,
+        milestone: !!t.milestone, done: !!t.done, progress: t.progress })),
+    dependencies: db.prepare('SELECT pred_id, succ_id FROM deps WHERE project_id=?').all(pid),
+  };
+}
+
+const AI_EDIT_SYS = (ctx) => `You are an expert project scheduler editing an existing Gantt chart. You receive the current project state as JSON and an instruction. Reply with ONLY a JSON object:
+{"summary": "a short plain-English paragraph of what you are changing and why",
+ "operations": [
+  {"op":"create_task","name":"...","start":"YYYY-MM-DD","end":"YYYY-MM-DD","person":"Name or null","milestone":false,"parent":<existing task id, or the exact name of another new task, or null>,"depends_on":[<task id or new-task name>, ...],"notes":"or null"},
+  {"op":"update_task","task_id":123,"fields":{<any of: start, end, name, person (name or null), progress 0-100, milestone, parent_task_id (id or 0 for top level), notes>}},
+  {"op":"delete_task","task_id":123},
+  {"op":"add_dependency","pred":<id or new-task name>,"succ":<id or new-task name>},
+  {"op":"remove_dependency","pred":123,"succ":456},
+  {"op":"update_project","fields":{<any of: name, due_date, notes>}}
+]}
+Rules:
+- Today is ${ctx.today}. All dates are YYYY-MM-DD.
+- Make the MINIMAL set of changes that satisfies the instruction; leave everything else untouched.
+- Use exact task ids from the provided state for existing tasks. Refer to tasks you are creating by their exact name.
+- If someone is unavailable for a period, move only their affected incomplete tasks out of that period, then shift dependent tasks just enough that every finish-to-start dependency stays consistent (a successor starts after its predecessor ends). Say in the summary if the project end moves.
+- When adding subtasks under a phase, fit them inside the phase's window unless told otherwise, give realistic proportional durations, run streams in parallel where the work allows, and add finish-to-start dependencies along the genuinely sequential chains so the critical path is meaningful. Phases are one level deep — a subtask cannot be a parent.
+- Prefer people from the people list; a genuinely new name is allowed and will be created.
+- Milestones are single-day (start = end).`;
+
+function validateOps(pid, ops) {
+  const warnings = [];
+  const taskIds = new Set(db.prepare('SELECT id FROM tasks WHERE project_id=?').all(pid).map(t => t.id));
+  const newNames = new Set(ops.filter(o => o.op === 'create_task' && o.name)
+    .map(o => o.name.toLowerCase()));
+  const refOk = (r) => (typeof r === 'number' && taskIds.has(r)) ||
+    (typeof r === 'string' && (newNames.has(r.toLowerCase()) || taskIds.has(Number(r))));
+  const dateOk = (s) => s === undefined || s === null || DATE_RE_SRV.test(s);
+  const out = [];
+  for (const o of (ops || [])) {
+    let bad = null;
+    if (o.op === 'create_task') {
+      if (!o.name || !dateOk(o.start) || !o.start) bad = 'missing name or valid start date';
+      else if (o.parent !== null && o.parent !== undefined && !refOk(o.parent)) bad = `unknown parent ${JSON.stringify(o.parent)}`;
+      else if ((o.depends_on || []).some(d => !refOk(d))) bad = 'unknown dependency reference';
+    } else if (o.op === 'update_task' || o.op === 'delete_task') {
+      if (!taskIds.has(Number(o.task_id))) bad = `task ${o.task_id} not in this project`;
+      else if (o.op === 'update_task' && (!dateOk(o.fields?.start) || !dateOk(o.fields?.end))) bad = 'bad date';
+    } else if (o.op === 'add_dependency' || o.op === 'remove_dependency') {
+      if (!refOk(o.pred) || !refOk(o.succ)) bad = 'unknown task reference';
+    } else if (o.op === 'update_project') {
+      if (!dateOk(o.fields?.due_date)) bad = 'bad due date';
+    } else bad = `unknown operation "${o.op}"`;
+    if (bad) warnings.push(`Skipping ${o.op}: ${bad}`);
+    else out.push(o);
+  }
+  return { ops: out, warnings };
+}
+const DATE_RE_SRV = /^\d{4}-\d{2}-\d{2}$/;
+
+app.post('/api/ai-edit', async (req, res) => {
+  const key = getSetting('openai_key') || process.env.OPENAI_API_KEY;
+  if (!key) return res.status(400).json({ error: 'no_key' });
+  const { project_id, prompt, operations, amendment } = req.body;
+  if (!db.prepare('SELECT 1 FROM projects WHERE id=?').get(project_id))
+    return res.status(404).json({ error: 'not found' });
+  if (!canTouchProject(req, project_id)) return forbidden(res);
+  const ctx = projectContext(project_id);
+  const messages = [{ role: 'system', content: AI_EDIT_SYS(ctx) },
+    { role: 'user', content: `Current project state:\n${JSON.stringify(ctx)}` }];
+  if (operations && amendment) {
+    messages.push({ role: 'user', content:
+      `Original instruction: ${prompt}\n\nYour previous proposal:\n${JSON.stringify({ operations })}\n\nAmend it as follows: ${amendment}\n\nReturn the complete amended proposal JSON.` });
+  } else {
+    messages.push({ role: 'user', content: `Instruction: ${String(prompt || '')}` });
+  }
+  try {
+    const r = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: 'gpt-4o', max_tokens: 16000,
+        response_format: { type: 'json_object' }, messages }),
+    });
+    if (!r.ok) return res.status(502).json({ error: 'openai_error', detail: (await r.text()).slice(0, 400) });
+    const j = await r.json();
+    if (j.choices[0].finish_reason === 'length')
+      return res.status(502).json({ error: 'plan_too_long', detail: 'Too many changes for one proposal — split the instruction.' });
+    const parsed = JSON.parse(j.choices[0].message.content);
+    const { ops, warnings } = validateOps(project_id, parsed.operations || []);
+    ok(res, { summary: parsed.summary || '', operations: ops, warnings });
+  } catch (e) {
+    res.status(502).json({ error: 'bad_response', detail: String(e.message) });
+  }
+});
+
+app.post('/api/ai-edit/apply', (req, res) => {
+  const { project_id, operations, summary } = req.body;
+  if (!db.prepare('SELECT 1 FROM projects WHERE id=?').get(project_id))
+    return res.status(404).json({ error: 'not found' });
+  if (!canTouchProject(req, project_id)) return forbidden(res);
+  const { ops } = validateOps(project_id, operations || []);
+  // safety net: snapshot the plan before the AI touches it
+  const snapTasks = db.prepare(
+    'SELECT id, name, start, end, milestone, done FROM tasks WHERE project_id=?').all(project_id);
+  const snap = db.prepare('INSERT INTO snapshots (project_id, name, data) VALUES (?,?,?)')
+    .run(project_id, `Before AI edit ${new Date().toISOString().slice(0, 16).replace('T', ' ')}`,
+      JSON.stringify(snapTasks));
+  const created = new Map();
+  const resolveRef = (r) => {
+    if (typeof r === 'number') return r;
+    const byName = created.get(String(r).toLowerCase());
+    return byName || Number(r) || null;
+  };
+  const personId = (name) => {
+    if (!name) return null;
+    const p = db.prepare('SELECT id FROM people WHERE lower(name)=lower(?)').get(String(name).trim());
+    if (p) return p.id;
+    return db.prepare('INSERT INTO people (name, color) VALUES (?, ?)')
+      .run(String(name).trim(), '#8a94a6').lastInsertRowid;
+  };
+  const aud = (action, entityId, detail) => audit({ user: req.user, via: 'ai-edit' },
+    action, 'task', entityId, project_id, detail);
+  let applied = 0; const skipped = [];
+  for (const o of ops) {
+    try {
+      if (o.op === 'create_task') {
+        const end = o.milestone ? o.start : (DATE_RE_SRV.test(o.end || '') ? o.end : o.start);
+        const parentId = o.parent !== null && o.parent !== undefined ? resolveRef(o.parent) : null;
+        const r = db.prepare(
+          `INSERT INTO tasks (project_id, name, start, end, done, milestone, person_id, notes, progress, parent_id, sort_order)
+           VALUES (?,?,?,?,0,?,?,?,0,?,
+             COALESCE((SELECT MAX(sort_order)+1 FROM tasks WHERE project_id=?), 0))`)
+          .run(project_id, o.name, o.start, end < o.start ? o.start : end,
+            o.milestone ? 1 : 0, personId(o.person), o.notes || '', parentId, project_id);
+        created.set(o.name.toLowerCase(), r.lastInsertRowid);
+        for (const d of (o.depends_on || [])) {
+          const pid2 = resolveRef(d);
+          if (pid2) db.prepare('INSERT OR IGNORE INTO deps (project_id, pred_id, succ_id) VALUES (?,?,?)')
+            .run(project_id, pid2, r.lastInsertRowid);
+        }
+        aud('create', r.lastInsertRowid, { name: o.name, start: o.start, end });
+      } else if (o.op === 'update_task') {
+        const t = db.prepare('SELECT * FROM tasks WHERE id=?').get(o.task_id);
+        const f = o.fields || {};
+        const m = { ...t };
+        if (f.name !== undefined) m.name = f.name;
+        if (f.start !== undefined) m.start = f.start;
+        if (f.end !== undefined) m.end = f.end;
+        if (f.milestone !== undefined) m.milestone = f.milestone ? 1 : 0;
+        if (m.milestone) m.end = m.start;
+        if (m.end < m.start) m.end = m.start;
+        if (f.notes !== undefined) m.notes = f.notes || '';
+        if (f.person !== undefined) m.person_id = f.person ? personId(f.person) : null;
+        if (f.parent_task_id !== undefined) m.parent_id = f.parent_task_id ? resolveRef(f.parent_task_id) : null;
+        if (f.progress !== undefined) {
+          m.progress = Math.max(0, Math.min(100, Number(f.progress) || 0));
+          m.done = m.progress >= 100 ? 1 : 0;
+        }
+        db.prepare('UPDATE tasks SET name=?, start=?, end=?, done=?, milestone=?, person_id=?, notes=?, progress=?, parent_id=? WHERE id=?')
+          .run(m.name, m.start, m.end, m.done ? 1 : 0, m.milestone ? 1 : 0,
+            m.person_id || null, m.notes, m.progress || 0,
+            m.parent_id === t.id ? null : (m.parent_id || null), t.id);
+        aud('update', t.id, { name: t.name, changes: diff(t, m, TASK_FIELDS) });
+      } else if (o.op === 'delete_task') {
+        const t = db.prepare('SELECT * FROM tasks WHERE id=?').get(o.task_id);
+        db.prepare('UPDATE tasks SET parent_id=NULL WHERE parent_id=?').run(o.task_id);
+        db.prepare('DELETE FROM tasks WHERE id=?').run(o.task_id);
+        aud('delete', o.task_id, { name: t ? t.name : null });
+      } else if (o.op === 'add_dependency') {
+        const a = resolveRef(o.pred), b = resolveRef(o.succ);
+        if (a && b && a !== b)
+          db.prepare('INSERT OR IGNORE INTO deps (project_id, pred_id, succ_id) VALUES (?,?,?)')
+            .run(project_id, a, b);
+      } else if (o.op === 'remove_dependency') {
+        db.prepare('DELETE FROM deps WHERE project_id=? AND pred_id=? AND succ_id=?')
+          .run(project_id, resolveRef(o.pred), resolveRef(o.succ));
+      } else if (o.op === 'update_project') {
+        const p = db.prepare('SELECT * FROM projects WHERE id=?').get(project_id);
+        const f = o.fields || {};
+        db.prepare('UPDATE projects SET name=?, due_date=?, notes=? WHERE id=?')
+          .run(f.name ?? p.name, f.due_date !== undefined ? f.due_date : p.due_date,
+            f.notes !== undefined ? (f.notes || '') : p.notes, project_id);
+      }
+      applied++;
+    } catch (e) {
+      skipped.push(`${o.op}: ${e.message}`);
+    }
+  }
+  audit({ user: req.user, via: 'ai-edit' }, 'ai_edit', 'project', project_id, project_id,
+    { summary: (summary || '').slice(0, 500), applied, skipped: skipped.length });
+  ok(res, { applied, skipped, snapshot_id: snap.lastInsertRowid });
+});
+
 app.post('/api/snapshots', (req, res) => {
   const { project_id, name } = req.body;
   if (!canTouchProject(req, project_id)) return forbidden(res);
