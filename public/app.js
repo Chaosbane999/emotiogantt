@@ -5,7 +5,9 @@
   const panel = document.getElementById('panel');
   const scrim = document.getElementById('scrim');
 
-  let S = { projects: [], people: [], tasks: [], deps: [], snapshots: [] };
+  let S = { projects: [], people: [], tasks: [], deps: [], snapshots: [], members: [] };
+  let ME = { id: null, name: '', role: 'admin', username: null };
+  const isAdmin = () => ME.role === 'admin';
   let ganttZoom = localStorage.getItem('cp_zoom') || 'day';
   const snapCache = new Map(); // snapshot id -> task list
   const weekOffsets = new Map(); // project id -> weeks away from the current week
@@ -304,9 +306,20 @@
         `<div class="swatch ${c === p.color ? 'sel' : ''}" data-c="${c}" style="background:${c}"></div>`).join('')}</div>
       <label>Due date (optional)</label><input id="f_due" type="date" value="${p.due_date || ''}">
       <label>Notes</label><textarea id="f_notes" rows="3">${esc(p.notes)}</textarea>
+      ${!isNew && isAdmin() && S.people.some(pp => pp.username) ? `
+        <label>Who can access this project</label>
+        <p class="muted" style="font-size:12px;margin:2px 0 6px">People with tasks assigned always
+          have access; tick others who should see it too. Admins see everything.</p>
+        <div id="f_members">${S.people.filter(pp => pp.role !== 'admin').map(pp => `
+          <label class="pdrop-item" style="padding:6px 8px">
+            <input type="checkbox" data-member="${pp.id}"
+              ${S.members.some(m => m.project_id === p.id && m.person_id === pp.id) ? 'checked' : ''}>
+            <span class="dot" style="background:${pp.color}"></span>${esc(pp.name)}
+            ${pp.username ? `<span class="muted" style="font-size:11px">@${esc(pp.username)}</span>` : ''}
+          </label>`).join('')}</div>` : ''}
       <div class="panel-actions">
         <button class="btn primary grow" id="f_save">${isNew ? 'Create' : 'Save'}</button>
-        ${!isNew ? '<button class="btn danger" id="f_del">Delete</button>' : ''}
+        ${!isNew && isAdmin() ? '<button class="btn danger" id="f_del">Delete</button>' : ''}
         <button class="btn" id="f_cancel">Cancel</button>
       </div>`);
     let color = p.color;
@@ -320,11 +333,19 @@
       if (!name) return;
       const body = { name, color, due_date: panel.querySelector('#f_due').value || null,
         notes: panel.querySelector('#f_notes').value };
+      const memberBoxes = [...panel.querySelectorAll('[data-member]')];
       closePanel();
       if (isNew) await mutate('POST', '/api/projects', body);
-      else await mutate('PUT', `/api/projects/${p.id}`, body);
+      else {
+        if (memberBoxes.length) {
+          await api('PUT', `/api/projects/${p.id}/members`, {
+            person_ids: memberBoxes.filter(b => b.checked).map(b => Number(b.dataset.member)) });
+        }
+        await mutate('PUT', `/api/projects/${p.id}`, body);
+      }
     });
-    if (!isNew) armDelete(panel.querySelector('#f_del'), async () => {
+    const fDel = !isNew && panel.querySelector('#f_del');
+    if (fDel) armDelete(fDel, async () => {
       closePanel();
       location.hash = '#/projects';
       await mutate('DELETE', `/api/projects/${p.id}`);
@@ -794,7 +815,7 @@
       const busiest = Math.max(0, ...dates.map(d => mine.filter(t => t.start <= d && t.end >= d && !t.milestone).length));
       return `<div class="person-row" data-person="${p.id}" style="cursor:pointer">
         <div class="avatar" style="background:${p.color}">${esc(p.name.split(/\s+/).map(w => w[0]).slice(0, 2).join('').toUpperCase())}</div>
-        <div class="p-name">${esc(p.name)}<div class="muted" style="font-size:12px;font-weight:400">${mine.length} open task${mine.length === 1 ? '' : 's'}${busiest > 2 ? ' · <span style="color:var(--critical)">quite full</span>' : ''}</div></div>
+        <div class="p-name">${esc(p.name)}<div class="muted" style="font-size:12px;font-weight:400">${mine.length} open task${mine.length === 1 ? '' : 's'}${busiest > 2 ? ' · <span style="color:var(--critical)">quite full</span>' : ''}${p.username ? ` · @${esc(p.username)}${p.role === 'admin' ? ' (admin)' : ''}` : ''}</div></div>
         <div class="heat-strip">${cells}</div>
       </div>`;
     }).join('');
@@ -825,9 +846,27 @@
         `<div class="swatch ${c === p.color ? 'sel' : ''}" data-c="${c}" style="background:${c}"></div>`).join('')}</div>
       <div class="panel-actions">
         <button class="btn primary grow" id="p_save">${isNew ? 'Add' : 'Save'}</button>
-        ${!isNew ? '<button class="btn danger" id="p_del">Remove</button>' : ''}
+        ${!isNew && isAdmin() ? '<button class="btn danger" id="p_del">Remove</button>' : ''}
         <button class="btn" id="p_cancel">Cancel</button>
-      </div>`);
+      </div>
+      ${!isNew && isAdmin() ? `
+        <h3 style="margin-top:30px;font-size:15px">Login</h3>
+        <p class="muted" style="font-size:12px;margin:4px 0 0">${p.username
+          ? `Signs in as <strong>${esc(p.username)}</strong> (${esc(p.role || 'member')}). Members only see projects they're allocated to or have tasks in.`
+          : 'No login yet — set a username and password to let them sign in. Members only see projects they\'re allocated to or have tasks in.'}</p>
+        <label>Username</label><input id="l_user" value="${esc(p.username || '')}" autocomplete="off">
+        <label>Password ${p.username ? '<span style="font-weight:400">(leave blank to keep)</span>' : ''}</label>
+        <input id="l_pass" type="password" placeholder="min 8 characters" autocomplete="new-password">
+        <label>Role</label>
+        <select id="l_role">
+          <option value="member" ${p.role !== 'admin' ? 'selected' : ''}>Member — allocated projects only</option>
+          <option value="admin" ${p.role === 'admin' ? 'selected' : ''}>Admin — everything</option>
+        </select>
+        <div class="panel-actions">
+          <button class="btn grow" id="l_save">${p.username ? 'Update login' : 'Create login'}</button>
+          ${p.username ? '<button class="btn danger" id="l_del">Remove login</button>' : ''}
+        </div>
+        <p id="l_err" class="err hidden"></p>` : ''}`);
     let color = p.color;
     panel.querySelectorAll('.swatch').forEach(s => s.addEventListener('click', () => {
       color = s.dataset.c;
@@ -841,10 +880,36 @@
       if (isNew) await mutate('POST', '/api/people', { name, color });
       else await mutate('PUT', `/api/people/${p.id}`, { name, color });
     });
-    if (!isNew) armDelete(panel.querySelector('#p_del'), async () => {
+    const pDel = panel.querySelector('#p_del');
+    if (pDel) armDelete(pDel, async () => {
       closePanel();
       await mutate('DELETE', `/api/people/${p.id}`);
       toast(`${p.name} removed — their tasks are now unassigned.`);
+    });
+    const lSave = panel.querySelector('#l_save');
+    if (lSave) lSave.addEventListener('click', async () => {
+      const err = panel.querySelector('#l_err');
+      err.classList.add('hidden');
+      try {
+        await api('POST', `/api/people/${p.id}/login`, {
+          username: panel.querySelector('#l_user').value.trim(),
+          password: panel.querySelector('#l_pass').value,
+          role: panel.querySelector('#l_role').value,
+        });
+        closePanel();
+        await reload(); route();
+        toast(`Login saved for ${p.name}.`);
+      } catch (e) {
+        err.textContent = friendlyApiError(e);
+        err.classList.remove('hidden');
+      }
+    });
+    const lDel = panel.querySelector('#l_del');
+    if (lDel) armDelete(lDel, async () => {
+      closePanel();
+      await api('DELETE', `/api/people/${p.id}/login`);
+      await reload(); route();
+      toast(`${p.name} can no longer sign in.`);
     });
   }
 
@@ -1155,6 +1220,54 @@ The project is: [describe your project here]`;
     }
   }
 
+  // ----- Activity (audit trail) -----
+  const AUDIT_VERBS = { create: 'created', update: 'updated', delete: 'deleted',
+    reorder: 'reordered', login: 'signed in', set_login: 'set login for',
+    remove_login: 'removed login for', set_members: 'changed access for',
+    change_password: 'changed their password' };
+  function describeAudit(a) {
+    let detail = {};
+    try { detail = JSON.parse(a.detail || '{}'); } catch (e) {}
+    const proj = a.project_id ? (projById(a.project_id)?.name || `project #${a.project_id}`) : null;
+    if (a.via === 'mcp') {
+      return `AI assistant ran ${a.action.replace(/_/g, ' ')}` + (proj ? ` in “${proj}”` : '');
+    }
+    const verb = AUDIT_VERBS[a.action] || a.action;
+    let what = a.entity === 'task' ? `task “${esc(detail.name || '#' + a.entity_id)}”`
+      : a.entity === 'project' ? `project “${esc(detail.name || proj || '#' + a.entity_id)}”`
+      : a.entity === 'person' ? `person #${a.entity_id}`
+      : a.entity === 'dependency' ? 'a dependency'
+      : a.entity === 'snapshot' ? `snapshot “${esc(detail.name || '')}”`
+      : a.entity;
+    if (a.action === 'login') return 'signed in';
+    if (a.action === 'change_password') return 'changed their password';
+    let changes = '';
+    if (detail.changes) {
+      changes = ' — ' + Object.entries(detail.changes).map(([f, v]) =>
+        `${f}: ${esc(String(v.from ?? '—'))} → ${esc(String(v.to ?? '—'))}`).join(', ');
+    }
+    return `${verb} ${what}${proj && a.entity !== 'project' ? ` in “${esc(proj)}”` : ''}${changes}`;
+  }
+  async function renderActivity() {
+    setNav('activity');
+    const rows = await api('GET', '/api/audit?limit=200');
+    view.innerHTML = `
+      <div class="narrow">
+      <h1>Activity</h1>
+      <p class="subtitle">${isAdmin() ? 'Every change, by everyone.' : 'Changes on your projects.'}</p>
+      ${rows.length ? `<div class="focus-list">${rows.map(a => `
+        <div class="focus-item" style="align-items:flex-start">
+          <div class="grow">
+            <div style="font-size:14px">${a.via === 'mcp'
+              ? '<span class="pill neutral">AI</span> '
+              : `<strong>${esc(a.who || 'Someone')}</strong> `}${describeAudit(a)}</div>
+            <div class="t-sub">${esc(a.at)} UTC${a.via !== 'web' ? ' · via ' + esc(a.via) : ''}</div>
+          </div>
+        </div>`).join('')}</div>`
+        : '<div class="empty-state"><span class="big-emoji">🗒️</span>Nothing recorded yet.</div>'}
+      </div>`;
+  }
+
   // ---------- router ----------
   function route() {
     const h = location.hash || '#/today';
@@ -1163,6 +1276,7 @@ The project is: [describe your project here]`;
     if (h.startsWith('#/projects')) return renderProjects();
     if (h.startsWith('#/timeline')) return renderTimeline();
     if (h.startsWith('#/people')) return renderPeople();
+    if (h.startsWith('#/activity')) return renderActivity();
     return renderToday();
   }
   window.addEventListener('hashchange', route);
@@ -1180,7 +1294,19 @@ The project is: [describe your project here]`;
   });
 
   // ---------- boot ----------
-  reload().then(route).catch(err => {
+  document.getElementById('signOut').addEventListener('click', async () => {
+    await fetch('/logout', { method: 'POST' });
+    location.href = '/login.html';
+  });
+  api('GET', '/api/me').then(me => {
+    ME = me;
+    if (me.username) {
+      document.getElementById('userChip').textContent = me.name +
+        (me.role === 'admin' ? ' (admin)' : '');
+      document.getElementById('signOut').classList.remove('hidden');
+    }
+    return reload();
+  }).then(route).catch(err => {
     view.innerHTML = `<div class="empty-state">Couldn't load your data — is the server running?<br><span class="muted">${esc(err.message)}</span></div>`;
   });
 })();

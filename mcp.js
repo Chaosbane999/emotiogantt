@@ -282,8 +282,18 @@ function handle(req, res) {
       const name = m.params && m.params.name;
       const fn = impl[name];
       if (!fn) return fail(-32602, `unknown tool: ${name}`);
+      const args = (m.params && m.params.arguments) || {};
       try {
-        const out = fn((m.params && m.params.arguments) || {});
+        const out = fn(args);
+        if (!/^(list_|get_)/.test(name)) {
+          const pid = args.project_id ||
+            (args.task_id && (db.prepare('SELECT project_id FROM tasks WHERE id=?').get(args.task_id) || {}).project_id) ||
+            (args.predecessor_task_id && (db.prepare('SELECT project_id FROM tasks WHERE id=?').get(args.predecessor_task_id) || {}).project_id) ||
+            out.project_id || null;
+          db.prepare('INSERT INTO audit (person_id, via, action, entity, entity_id, project_id, detail) VALUES (?,?,?,?,?,?,?)')
+            .run(null, 'mcp', name, 'mcp', out.task_id || out.snapshot_id || null,
+              pid, JSON.stringify(args).slice(0, 2000));
+        }
         return reply({ content: [{ type: 'text', text: JSON.stringify(out, null, 1) }] });
       } catch (e) {
         return reply({ content: [{ type: 'text', text: 'Error: ' + e.message }], isError: true });

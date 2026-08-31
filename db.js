@@ -67,4 +67,33 @@ try {
   db.exec('ALTER TABLE tasks ADD COLUMN parent_id INTEGER');
 } catch (e) { /* column already exists */ }
 
+// migration: per-user logins, project allocation, audit trail
+try { db.exec('ALTER TABLE people ADD COLUMN username TEXT'); } catch (e) {}
+try { db.exec('ALTER TABLE people ADD COLUMN password_hash TEXT'); } catch (e) {}
+try { db.exec("ALTER TABLE people ADD COLUMN role TEXT NOT NULL DEFAULT 'member'"); } catch (e) {}
+db.exec(`
+CREATE UNIQUE INDEX IF NOT EXISTS idx_people_username ON people(username) WHERE username IS NOT NULL;
+CREATE TABLE IF NOT EXISTS sessions (
+  token TEXT PRIMARY KEY,
+  person_id INTEGER NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE TABLE IF NOT EXISTS project_members (
+  project_id INTEGER NOT NULL,
+  person_id INTEGER NOT NULL,
+  PRIMARY KEY (project_id, person_id)
+);
+CREATE TABLE IF NOT EXISTS audit (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  at TEXT NOT NULL DEFAULT (datetime('now')),
+  person_id INTEGER,
+  via TEXT NOT NULL DEFAULT 'web',
+  action TEXT NOT NULL,
+  entity TEXT NOT NULL,
+  entity_id INTEGER,
+  project_id INTEGER,
+  detail TEXT NOT NULL DEFAULT ''
+);
+`);
+
 module.exports = db;
