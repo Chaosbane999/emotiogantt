@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EmotioGantt — reset password</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="login-wrap">
+  <div class="login-card">
+    <div class="brand big">Emotio<span>Gantt</span></div>
+    <p class="muted">Choose a new password.</p>
+    <form id="resetForm">
+      <input type="password" id="pw1" placeholder="New password (min 8 characters)" autofocus autocomplete="new-password">
+      <input type="password" id="pw2" placeholder="Repeat it" autocomplete="new-password">
+      <button type="submit" class="btn primary">Set password</button>
+      <p id="err" class="err hidden"></p>
+      <p id="okmsg" class="muted hidden">Done — you can <a href="/login.html">sign in</a> with your new password.</p>
+    </form>
+  </div>
+</div>
+<script>
+const code = new URLSearchParams(location.search).get('code') || '';
+document.getElementById('resetForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const err = document.getElementById('err');
+  err.classList.add('hidden');
+  const p1 = document.getElementById('pw1').value;
+  const p2 = document.getElementById('pw2').value;
+  if (p1 !== p2) {
+    err.textContent = "Those two don't match — try again.";
+    return err.classList.remove('hidden');
+  }
+  const r = await fetch('/reset/complete', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ code, password: p1 }),
+  });
+  if (r.ok) {
+    document.getElementById('okmsg').classList.remove('hidden');
+    setTimeout(() => location.href = '/login.html', 1500);
+  } else {
+    const j = await r.json().catch(() => ({}));
+    err.textContent = j.error || 'That link is invalid or expired.';
+    err.classList.remove('hidden');
+  }
+});
+</script>
+</body>
+</html>

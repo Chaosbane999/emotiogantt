@@ -16,6 +16,16 @@
       <input type="password" id="password" placeholder="Password" autocomplete="current-password">
       <button type="submit" class="btn primary">Sign in</button>
       <p id="loginErr" class="err hidden">That didn't match — try again.</p>
+      <p style="margin-top:14px"><a href="#" id="forgot" class="muted" style="font-size:13px">Forgotten your password?</a></p>
+    </form>
+    <form id="forgotForm" class="hidden">
+      <p class="muted" style="font-size:13px">Enter your username and your admin will be
+        notified to send you a reset link.</p>
+      <input type="text" id="fUsername" placeholder="Username" autocomplete="username">
+      <button type="submit" class="btn primary">Request reset</button>
+      <p id="forgotDone" class="muted hidden" style="font-size:13px">Request sent — your admin
+        will send you a reset link shortly.</p>
+      <p style="margin-top:10px"><a href="#" id="backToLogin" class="muted" style="font-size:13px">Back to sign in</a></p>
     </form>
   </div>
 </div>
@@ -32,6 +42,26 @@ document.getElementById('loginForm').addEventListener('submit', async (e) => {
   });
   if (r.ok) location.href = '/';
   else document.getElementById('loginErr').classList.remove('hidden');
+});
+document.getElementById('forgot').addEventListener('click', (e) => {
+  e.preventDefault();
+  document.getElementById('loginForm').classList.add('hidden');
+  document.getElementById('forgotForm').classList.remove('hidden');
+});
+document.getElementById('backToLogin').addEventListener('click', (e) => {
+  e.preventDefault();
+  document.getElementById('forgotForm').classList.add('hidden');
+  document.getElementById('loginForm').classList.remove('hidden');
+});
+document.getElementById('forgotForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const u = document.getElementById('fUsername').value.trim();
+  if (!u) return;
+  await fetch('/reset/request', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username: u }),
+  });
+  document.getElementById('forgotDone').classList.remove('hidden');
 });
 </script>
 </body>

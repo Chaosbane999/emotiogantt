@@ -110,6 +110,48 @@ app.post('/login', (req, res) => {
   setTimeout(finish, Math.min(5000, Math.max(0, fails - 4) * 1000));
 });
 
+// ---- forgot password: request -> admin generates one-time link -> user resets ----
+app.post('/reset/request', (req, res) => {
+  const username = String(req.body.username || '').trim();
+  // always answer the same so usernames can't be probed
+  const done = () => ok(res, { ok: true });
+  if (!username) return done();
+  const u = db.prepare('SELECT * FROM people WHERE lower(username)=lower(?)').get(username);
+  if (!u) return done();
+  const pending = db.prepare(
+    'SELECT 1 FROM pw_resets WHERE person_id=? AND used=0 AND code IS NULL').get(u.id);
+  if (!pending) {
+    db.prepare('INSERT INTO pw_resets (person_id) VALUES (?)').run(u.id);
+    audit({ user: u, via: 'web' }, 'reset_requested', 'person', u.id, null, {});
+  }
+  done();
+});
+
+app.post('/reset/complete', (req, res) => {
+  const ip = clientIp(req);
+  const fails = loginFails.get(ip) || 0;
+  const finish = () => {
+    const { code, password } = req.body || {};
+    const row = db.prepare(
+      'SELECT * FROM pw_resets WHERE code=? AND used=0').get(String(code || ''));
+    if (!row || !row.expires || row.expires < Date.now()) {
+      loginFails.set(ip, fails + 1);
+      return res.status(400).json({ error: 'That reset link is invalid or has expired — ask your admin for a fresh one.' });
+    }
+    if (String(password || '').length < 8)
+      return res.status(400).json({ error: 'Password must be at least 8 characters.' });
+    loginFails.delete(ip);
+    db.prepare('UPDATE people SET password_hash=? WHERE id=?')
+      .run(hashPassword(password), row.person_id);
+    db.prepare('UPDATE pw_resets SET used=1 WHERE person_id=?').run(row.person_id);
+    db.prepare('DELETE FROM sessions WHERE person_id=?').run(row.person_id);
+    const who = db.prepare('SELECT * FROM people WHERE id=?').get(row.person_id);
+    audit({ user: who, via: 'web' }, 'password_reset', 'person', row.person_id, null, {});
+    ok(res);
+  };
+  setTimeout(finish, Math.min(5000, Math.max(0, fails - 4) * 1000));
+});
+
 app.post('/logout', (req, res) => {
   const tok = readCookie(req, 'cp_sess');
   if (tok) db.prepare('DELETE FROM sessions WHERE token=?').run(tok);
@@ -200,6 +242,36 @@ app.post('/api/me/password', (req, res) => {
   db.prepare('UPDATE people SET password_hash=? WHERE id=?').run(hashPassword(pw), req.user.id);
   audit(req, 'change_password', 'person', req.user.id, null, {});
   ok(res);
+});
+
+// admin: pending password-reset requests + one-time link generation
+app.get('/api/reset/pending', (req, res) => {
+  if (!isAdmin(req)) return forbidden(res);
+  ok(res, db.prepare(`
+    SELECT r.id, r.person_id, r.requested_at, p.name, p.username
+    FROM pw_resets r JOIN people p ON p.id = r.person_id
+    WHERE r.used=0 AND r.code IS NULL ORDER BY r.id DESC`).all());
+});
+app.post('/api/people/:id/reset-link', (req, res) => {
+  if (!isAdmin(req)) return forbidden(res);
+  const p = db.prepare('SELECT * FROM people WHERE id=? AND username IS NOT NULL')
+    .get(req.params.id);
+  if (!p) return res.status(404).json({ error: 'no login for that person' });
+  const code = crypto.randomBytes(24).toString('hex');
+  // invalidate any older live links, then attach the code to the pending
+  // request (or create a fresh row when the admin initiates it themselves)
+  db.prepare('UPDATE pw_resets SET used=1 WHERE person_id=? AND used=0 AND code IS NOT NULL')
+    .run(p.id);
+  const r = db.prepare(
+    'UPDATE pw_resets SET code=?, expires=? WHERE person_id=? AND used=0 AND code IS NULL')
+    .run(code, Date.now() + 24 * 3600 * 1000, p.id);
+  if (!r.changes) {
+    db.prepare('INSERT INTO pw_resets (person_id, code, expires) VALUES (?,?,?)')
+      .run(p.id, code, Date.now() + 24 * 3600 * 1000);
+  }
+  audit(req, 'reset_link', 'person', p.id, null, { for: p.name });
+  const base = process.env.PUBLIC_URL || 'https://gantt.emotioflow.com';
+  ok(res, { url: `${base}/reset.html?code=${code}`, expires_hours: 24 });
 });
 
 // admin: give a person a login / change role / remove login

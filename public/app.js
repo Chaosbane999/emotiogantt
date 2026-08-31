@@ -796,8 +796,30 @@
   }
 
   // ----- People / workload -----
-  function renderPeople() {
+  async function copyResetLink(personId, name) {
+    try {
+      const r = await api('POST', `/api/people/${personId}/reset-link`);
+      await navigator.clipboard.writeText(r.url).catch(() => {});
+      openPanel(`
+        <h3>Reset link for ${esc(name)}</h3>
+        <p class="muted" style="font-size:13px">Single use, valid for 24 hours. It's been
+          copied to your clipboard — send it to them however you normally chat.</p>
+        <textarea rows="3" readonly style="font-size:12px" onclick="this.select()">${esc(r.url)}</textarea>
+        <div class="panel-actions"><button class="btn primary grow" id="rl_done">Done</button></div>`);
+      panel.querySelector('#rl_done').addEventListener('click', async () => {
+        closePanel(); await reload(); route();
+      });
+    } catch (e) {
+      toast('Could not create the link: ' + friendlyApiError(e));
+    }
+  }
+
+  async function renderPeople() {
     setNav('people');
+    let pendingResets = [];
+    if (isAdmin()) {
+      try { pendingResets = await api('GET', '/api/reset/pending'); } catch (e) {}
+    }
     const today = D.today();
     const DAYS = 14;
     const dates = Array.from({ length: DAYS }, (_, i) => D.add(today, i));
@@ -825,6 +847,14 @@
     view.innerHTML = `
       <h1>People &amp; workload</h1>
       <p class="subtitle">Who's carrying what over the next two weeks. Deeper colour = more on that day.</p>
+      ${pendingResets.length ? `<div class="focus-list" style="margin-bottom:18px">${pendingResets.map(r => `
+        <div class="focus-item" style="border-left:4px solid var(--watch)">
+          <div class="grow">
+            <div class="t-name">${esc(r.name)} forgot their password</div>
+            <div class="t-sub">@${esc(r.username)} · requested ${esc(r.requested_at)} UTC</div>
+          </div>
+          <button class="btn small" data-resetlink="${r.person_id}" data-rname="${esc(r.name)}">Generate reset link</button>
+        </div>`).join('')}</div>` : ''}
       <div style="display:flex;gap:14px;margin-bottom:6px">
         <div style="width:48px"></div><div style="width:140px"></div>
         <div class="heat-labels">${dates.map(d => `<span>${D.human(d).split(' ')[0]}</span>`).join('')}</div>
@@ -835,6 +865,11 @@
     document.getElementById('addPerson').addEventListener('click', () => editPerson(null));
     view.querySelectorAll('[data-person]').forEach(r =>
       r.addEventListener('click', () => editPerson(S.people.find(p => p.id === Number(r.dataset.person)))));
+    view.querySelectorAll('[data-resetlink]').forEach(b =>
+      b.addEventListener('click', (e) => {
+        e.stopPropagation();
+        copyResetLink(Number(b.dataset.resetlink), b.dataset.rname);
+      }));
   }
 
   function editPerson(p) {
@@ -868,6 +903,7 @@
           <button class="btn grow" id="l_save">${p.username ? 'Update login' : 'Create login'}</button>
           ${p.username ? '<button class="btn danger" id="l_del">Remove login</button>' : ''}
         </div>
+        ${p.username ? '<p style="margin-top:10px"><button class="btn small" id="l_reset">🔑 Generate password reset link</button></p>' : ''}
         <p id="l_err" class="err hidden"></p>` : ''}`);
     let color = p.color;
     panel.querySelectorAll('.swatch').forEach(s => s.addEventListener('click', () => {
@@ -906,6 +942,8 @@
         err.classList.remove('hidden');
       }
     });
+    const lReset = panel.querySelector('#l_reset');
+    if (lReset) lReset.addEventListener('click', () => copyResetLink(p.id, p.name));
     const lDel = panel.querySelector('#l_del');
     if (lDel) armDelete(lDel, async () => {
       closePanel();
@@ -1339,7 +1377,9 @@ or: Add these tasks under the Development phase with sensible durations and depe
   const AUDIT_VERBS = { create: 'created', update: 'updated', delete: 'deleted',
     reorder: 'reordered', login: 'signed in', set_login: 'set login for',
     remove_login: 'removed login for', set_members: 'changed access for',
-    change_password: 'changed their password', ai_edit: 'ran an AI edit on' };
+    change_password: 'changed their password', ai_edit: 'ran an AI edit on',
+    reset_requested: 'requested a password reset', reset_link: 'issued a reset link for',
+    password_reset: 'reset their password' };
   function describeAudit(a) {
     let detail = {};
     try { detail = JSON.parse(a.detail || '{}'); } catch (e) {}

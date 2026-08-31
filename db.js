@@ -83,6 +83,14 @@ CREATE TABLE IF NOT EXISTS project_members (
   person_id INTEGER NOT NULL,
   PRIMARY KEY (project_id, person_id)
 );
+CREATE TABLE IF NOT EXISTS pw_resets (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  person_id INTEGER NOT NULL,
+  code TEXT,
+  requested_at TEXT NOT NULL DEFAULT (datetime('now')),
+  expires INTEGER,
+  used INTEGER NOT NULL DEFAULT 0
+);
 CREATE TABLE IF NOT EXISTS audit (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   at TEXT NOT NULL DEFAULT (datetime('now')),
