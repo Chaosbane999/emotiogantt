@@ -182,6 +182,10 @@ label { display: block; font-size: 13px; font-weight: 550; color: var(--ink-soft
 .gantt-names .gn-head {
   height: 56px; border-bottom: 1px solid var(--line); display: flex;
   align-items: center; padding: 0 16px; font-size: 13px; color: var(--ink-soft); font-weight: 600;
+  position: relative; z-index: 7; background: var(--surface);
+}
+.gantt-head-sticky {
+  position: relative; z-index: 5; background: var(--surface);
 }
 .gn-row {
   height: 40px; display: flex; align-items: center; gap: 8px; padding: 0 10px 0 6px;
@@ -323,6 +327,22 @@ svg.gantt text { font-family: inherit; }
 .login-card input { margin: 14px 0; text-align: center; }
 .login-card .btn { width: 100%; }
 .err { color: var(--critical); font-size: 13px; }
+
+/* PDF export (via the browser's print-to-PDF) */
+.print-host { display: none; }
+@media print {
+  @page { size: A3 landscape; margin: 10mm; }
+  body.print-mode > *:not(.print-host) { display: none !important; }
+  body.print-mode .print-host {
+    display: block !important;
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
+  .print-host svg { width: 100%; height: auto; }
+}
+.print-title {
+  font-size: 15px; margin: 0 0 8px; color: #33383f;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
 
 @media (max-width: 720px) {
   main { padding: 20px 14px 60px; }

@@ -13,6 +13,30 @@
   const namesWidth = () =>
     Math.max(150, Math.min(440, Number(localStorage.getItem(NAMES_W_KEY)) || 230));
 
+  // keep the date header and "Tasks" cell visible while the page scrolls.
+  // (position:sticky can't work here — the horizontal-scroll wrapper is an
+  // overflow container — so we translate them by hand.)
+  function stickyHeader(wrap, headWrap, gnHead) {
+    const update = () => {
+      if (!wrap.isConnected) return;
+      const topPx = document.querySelector('.topbar')?.offsetHeight || 0;
+      const r = wrap.getBoundingClientRect();
+      const maxOff = Math.max(0, r.height - 160);
+      const off = Math.max(0, Math.min(maxOff, topPx - r.top));
+      const tr = off ? `translateY(${off}px)` : '';
+      headWrap.style.transform = tr;
+      if (gnHead) gnHead.style.transform = tr;
+    };
+    if (window.__egSticky) {
+      window.removeEventListener('scroll', window.__egSticky);
+      window.removeEventListener('resize', window.__egSticky);
+    }
+    window.__egSticky = update;
+    window.addEventListener('scroll', update, { passive: true });
+    window.addEventListener('resize', update, { passive: true });
+    update();
+  }
+
   function addColResizer(wrap, names, onDone) {
     const rz = document.createElement('div');
     rz.className = 'col-resizer';
@@ -87,7 +111,7 @@
     const avail = container.clientWidth - namesW - 8;
     if (avail > 0 && totalDays * dayW < avail) dayW = avail / totalDays;
     const width = totalDays * dayW;
-    const height = HEAD_H + tasks.length * ROW_H;
+    const bodyH = tasks.length * ROW_H;
     const x = (date) => D.diff(min, date) * dayW;
 
     const peopleById = new Map(people.map(p => [p.id, p]));
@@ -181,27 +205,37 @@
     wrap.appendChild(names);
     addColResizer(wrap, names, opts.onLayoutChange);
 
-    // ---- scrollable chart ----
+    // ---- scrollable chart: sticky date header + body ----
     const scroll = document.createElement('div');
     scroll.className = 'gantt-scroll';
-    const svg = el('svg', { class: 'gantt', width, height: height + 10,
+    const headWrap = document.createElement('div');
+    headWrap.className = 'gantt-head-sticky';
+    const headSvg = el('svg', { class: 'gantt', width, height: HEAD_H,
+      style: 'display:block' });
+    headWrap.appendChild(headSvg);
+    scroll.appendChild(headWrap);
+    const svg = el('svg', { class: 'gantt', width, height: bodyH + 12,
       style: 'touch-action:none;user-select:none;-webkit-user-select:none;display:block' });
     scroll.appendChild(svg);
     wrap.appendChild(scroll);
+    // the task-name header cell sticks in step with the date header
+    stickyHeader(wrap, headWrap, names.querySelector('.gn-head'));
 
     // weekend + day grid
     for (let i = 0; i < totalDays; i++) {
       const date = D.add(min, i);
       if (D.isWeekend(date)) {
-        el('rect', { x: i * dayW, y: HEAD_H, width: dayW, height: height - HEAD_H,
+        el('rect', { x: i * dayW, y: 0, width: dayW, height: bodyH,
           fill: css('--surface2'), opacity: .55 }, svg);
       }
     }
     // row separators
     for (let r = 0; r <= tasks.length; r++) {
-      el('line', { x1: 0, y1: HEAD_H + r * ROW_H, x2: width, y2: HEAD_H + r * ROW_H,
+      el('line', { x1: 0, y1: r * ROW_H, x2: width, y2: r * ROW_H,
         stroke: css('--line'), 'stroke-width': 1 }, svg);
     }
+    el('line', { x1: 0, y1: HEAD_H - .5, x2: width, y2: HEAD_H - .5,
+      stroke: css('--line'), 'stroke-width': 1 }, headSvg);
 
     // ---- header: months + days/weeks ----
     let cursor = min;
@@ -212,10 +246,11 @@
       const mx = x(cursor), mw = (D.diff(cursor, segEnd) + 1) * dayW;
       if (mw > 40) {
         el('text', { x: mx + 8, y: 20, 'font-size': 12, 'font-weight': 600,
-          fill: css('--ink-soft') }, svg).textContent =
+          fill: css('--ink-soft') }, headSvg).textContent =
           dt.toLocaleDateString(undefined, { month: 'long', year: 'numeric', timeZone: 'UTC' });
       }
-      el('line', { x1: mx, y1: 0, x2: mx, y2: height, stroke: css('--line') }, svg);
+      el('line', { x1: mx, y1: 0, x2: mx, y2: HEAD_H, stroke: css('--line') }, headSvg);
+      el('line', { x1: mx, y1: 0, x2: mx, y2: bodyH, stroke: css('--line') }, svg);
       cursor = D.add(segEnd, 1);
     }
     for (let i = 0; i < totalDays; i++) {
@@ -223,18 +258,20 @@
       const dt = new Date(date + 'T00:00:00Z');
       if (weekMode) {
         el('text', { x: i * dayW + dayW / 2, y: 44, 'font-size': 11.5,
-          'text-anchor': 'middle', fill: css('--ink-soft') }, svg).textContent =
+          'text-anchor': 'middle', fill: css('--ink-soft') }, headSvg).textContent =
           dt.toLocaleDateString(undefined, { weekday: 'short', timeZone: 'UTC' }) + ' ' + dt.getUTCDate();
-        el('line', { x1: i * dayW, y1: HEAD_H - 8, x2: i * dayW, y2: height,
+        el('line', { x1: i * dayW, y1: HEAD_H - 8, x2: i * dayW, y2: HEAD_H,
+          stroke: css('--line'), opacity: .6 }, headSvg);
+        el('line', { x1: i * dayW, y1: 0, x2: i * dayW, y2: bodyH,
           stroke: css('--line'), opacity: .6 }, svg);
       } else if (zoom === 'day') {
         el('text', { x: i * dayW + dayW / 2, y: 44, 'font-size': 11,
-          'text-anchor': 'middle', fill: css('--ink-soft') }, svg).textContent = dt.getUTCDate();
+          'text-anchor': 'middle', fill: css('--ink-soft') }, headSvg).textContent = dt.getUTCDate();
       } else if (dt.getUTCDay() === 1) {
         el('text', { x: i * dayW + 3, y: 44, 'font-size': 10,
-          fill: css('--ink-soft') }, svg).textContent = dt.getUTCDate();
+          fill: css('--ink-soft') }, headSvg).textContent = dt.getUTCDate();
         el('line', { x1: i * dayW, y1: HEAD_H - 8, x2: i * dayW, y2: HEAD_H,
-          stroke: css('--line') }, svg);
+          stroke: css('--line') }, headSvg);
       }
     }
 
@@ -246,8 +283,8 @@
       if (!p || !s) continue;
       if (weekMode && (p.end < min || p.end > max || s.start < min || s.start > max)) continue;
       const isCrit = cpm.get(p.id)?.critical && cpm.get(s.id)?.critical;
-      const x1 = x(p.end) + dayW, y1 = HEAD_H + rowOf.get(p.id) * ROW_H + ROW_H / 2;
-      const x2 = x(s.start), y2 = HEAD_H + rowOf.get(s.id) * ROW_H + ROW_H / 2;
+      const x1 = x(p.end) + dayW, y1 = rowOf.get(p.id) * ROW_H + ROW_H / 2;
+      const x2 = x(s.start), y2 = rowOf.get(s.id) * ROW_H + ROW_H / 2;
       const midx = Math.max(x1 + 8, x2 - 8);
       const path = x2 >= x1 + 16
         ? `M ${x1} ${y1} L ${x2 - 8} ${y1} L ${x2 - 8} ${y2} L ${x2} ${y2}`
@@ -263,9 +300,11 @@
     // ---- today line ----
     if (today >= min && today <= max) {
       const tx = x(today) + dayW / 2;
-      el('line', { x1: tx, y1: HEAD_H - 6, x2: tx, y2: height,
+      el('line', { x1: tx, y1: 0, x2: tx, y2: bodyH,
         stroke: css('--accent'), 'stroke-width': 1.6, 'stroke-dasharray': '4 3' }, svg);
-      const badge = el('g', {}, svg);
+      const badge = el('g', {}, headSvg);
+      el('line', { x1: tx, y1: HEAD_H - 8, x2: tx, y2: HEAD_H,
+        stroke: css('--accent'), 'stroke-width': 1.6 }, badge);
       el('rect', { x: tx - 22, y: HEAD_H - 26, width: 44, height: 17, rx: 8,
         fill: css('--accent') }, badge);
       el('text', { x: tx, y: HEAD_H - 14, 'font-size': 10, 'font-weight': 700,
@@ -275,16 +314,16 @@
     // ---- project due marker ----
     if (project.due_date && project.due_date >= min && project.due_date <= max) {
       const dx = x(project.due_date) + dayW;
-      el('line', { x1: dx, y1: HEAD_H, x2: dx, y2: height,
+      el('line', { x1: dx, y1: 0, x2: dx, y2: bodyH,
         stroke: css('--watch'), 'stroke-width': 1.4 }, svg);
-      el('text', { x: dx - 4, y: height + 8, 'font-size': 10, 'text-anchor': 'end',
+      el('text', { x: dx - 4, y: bodyH + 9, 'font-size': 10, 'text-anchor': 'end',
         fill: css('--watch'), 'font-weight': 600 }, svg).textContent = 'Due';
     }
 
     // ---- task bars ----
     tasks.forEach((t, i) => {
       const c = cpm.get(t.id) || {};
-      const y = HEAD_H + i * ROW_H + BAR_PAD;
+      const y = i * ROW_H + BAR_PAD;
 
       // outside the visible week: a quiet hint pointing toward the bar
       const effStart = t._kind === 'parent' ? t._span.start : t.start;
@@ -432,11 +471,11 @@
         if (!linkDrag || linkDrag.task !== task || linkDrag.side !== side) return;
         const p = svgPoint(e);
         linkDrag.path.setAttribute('d', `M ${origin.x} ${origin.y} L ${p.x} ${p.y}`);
-        const row = Math.floor((p.y - HEAD_H) / ROW_H);
+        const row = Math.floor(p.y / ROW_H);
         const t2 = row >= 0 && row < tasks.length ? tasks[row] : null;
         const valid = t2 && t2.id !== task.id && t2._kind !== 'parent';
         linkDrag.target = valid ? t2 : null;
-        linkDrag.hi.setAttribute('y', HEAD_H + row * ROW_H);
+        linkDrag.hi.setAttribute('y', row * ROW_H);
         linkDrag.hi.setAttribute('opacity', valid ? .12 : 0);
       });
       const finish = () => {
@@ -574,7 +613,7 @@
     const avail = container.clientWidth - namesW - 8;
     if (avail > 0 && totalDays * dayW < avail) dayW = avail / totalDays;
     const width = totalDays * dayW;
-    const height = HEAD_H + rows.reduce((a, r) => a + r.rowH, 0);
+    const bodyH = rows.reduce((a, r) => a + r.rowH, 0);
     const x = (date) => D.diff(min, date) * dayW;
 
     container.innerHTML = '';
@@ -610,14 +649,21 @@
 
     const scroll = document.createElement('div');
     scroll.className = 'gantt-scroll';
-    const svg = el('svg', { class: 'gantt', width, height: height + 10,
+    const headWrap = document.createElement('div');
+    headWrap.className = 'gantt-head-sticky';
+    const headSvg = el('svg', { class: 'gantt', width, height: HEAD_H,
+      style: 'display:block' });
+    headWrap.appendChild(headSvg);
+    scroll.appendChild(headWrap);
+    const svg = el('svg', { class: 'gantt', width, height: bodyH + 10,
       style: 'display:block' });
     scroll.appendChild(svg);
     wrap.appendChild(scroll);
+    stickyHeader(wrap, headWrap, names.querySelector('.gn-head'));
 
-    let yCursor = HEAD_H;
-    el('line', { x1: 0, y1: yCursor, x2: width, y2: yCursor,
-      stroke: css('--line'), 'stroke-width': 1 }, svg);
+    let yCursor = 0;
+    el('line', { x1: 0, y1: HEAD_H - .5, x2: width, y2: HEAD_H - .5,
+      stroke: css('--line'), 'stroke-width': 1 }, headSvg);
     for (const r of rows) {
       r.top = yCursor;
       yCursor += r.rowH;
@@ -634,35 +680,40 @@
       const mx = x(cursor), mw = (D.diff(cursor, segEnd) + 1) * dayW;
       if (mw > 46) {
         el('text', { x: mx + 8, y: 22, 'font-size': 12, 'font-weight': 600,
-          fill: css('--ink-soft') }, svg).textContent =
+          fill: css('--ink-soft') }, headSvg).textContent =
           dt.toLocaleDateString(undefined, { month: 'long', year: 'numeric', timeZone: 'UTC' });
       }
-      el('line', { x1: mx, y1: 0, x2: mx, y2: height, stroke: css('--line') }, svg);
+      el('line', { x1: mx, y1: 0, x2: mx, y2: HEAD_H, stroke: css('--line') }, headSvg);
+      el('line', { x1: mx, y1: 0, x2: mx, y2: bodyH, stroke: css('--line') }, svg);
       cursor = D.add(segEnd, 1);
     }
     for (let i = 0; i < totalDays; i++) {
       const dt = new Date(D.add(min, i) + 'T00:00:00Z');
       if (weekMode) {
         el('text', { x: i * dayW + dayW / 2, y: 46, 'font-size': 11.5,
-          'text-anchor': 'middle', fill: css('--ink-soft') }, svg).textContent =
+          'text-anchor': 'middle', fill: css('--ink-soft') }, headSvg).textContent =
           dt.toLocaleDateString(undefined, { weekday: 'short', timeZone: 'UTC' }) + ' ' + dt.getUTCDate();
-        el('line', { x1: i * dayW, y1: HEAD_H - 8, x2: i * dayW, y2: height,
+        el('line', { x1: i * dayW, y1: HEAD_H - 8, x2: i * dayW, y2: HEAD_H,
+          stroke: css('--line'), opacity: .6 }, headSvg);
+        el('line', { x1: i * dayW, y1: 0, x2: i * dayW, y2: bodyH,
           stroke: css('--line'), opacity: .6 }, svg);
       } else if (dt.getUTCDay() === 1) {
         el('text', { x: i * dayW + 3, y: 46, 'font-size': 10,
-          fill: css('--ink-soft') }, svg).textContent = dt.getUTCDate();
+          fill: css('--ink-soft') }, headSvg).textContent = dt.getUTCDate();
       }
     }
 
     // today line
     if (today >= min && today <= max) {
       const tx = x(today) + dayW / 2;
-      el('line', { x1: tx, y1: HEAD_H - 6, x2: tx, y2: height,
+      el('line', { x1: tx, y1: 0, x2: tx, y2: bodyH,
         stroke: css('--accent'), 'stroke-width': 1.6, 'stroke-dasharray': '4 3' }, svg);
+      el('line', { x1: tx, y1: HEAD_H - 8, x2: tx, y2: HEAD_H,
+        stroke: css('--accent'), 'stroke-width': 1.6 }, headSvg);
       el('rect', { x: tx - 22, y: HEAD_H - 26, width: 44, height: 17, rx: 8,
-        fill: css('--accent') }, svg);
+        fill: css('--accent') }, headSvg);
       el('text', { x: tx, y: HEAD_H - 14, 'font-size': 10, 'font-weight': 700,
-        'text-anchor': 'middle', fill: '#fff' }, svg).textContent = 'Today';
+        'text-anchor': 'middle', fill: '#fff' }, headSvg).textContent = 'Today';
     }
 
     const overlap = (a, b) => a.start <= b.end && b.start <= a.end;
@@ -753,5 +804,127 @@
       ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   }
 
-  window.Gantt = { render, renderPortfolio };
+  // Print/PDF: one self-contained SVG of the whole project, always light palette
+  // so it reads well on paper. Names are drawn into the SVG itself.
+  function printSvg(opts) {
+    const { tasks, deps, cpm, project, people } = opts;
+    const P = { ink: '#33383f', soft: '#6d7480', line: '#e3e3dd', weekend: '#f1f1ec',
+      critical: '#d96c5b', done: '#9aa0aa', accent: '#24bbb6', watch: '#d9a648' };
+    const today = D.today();
+    const peopleById = new Map(people.map(p => [p.id, p]));
+    let min = today, max = today;
+    for (const t of tasks) {
+      const s = t._kind === 'parent' ? t._span.start : t.start;
+      const e = t._kind === 'parent' ? t._span.end : t.end;
+      if (s < min) min = s;
+      if (e > max) max = e;
+    }
+    if (project.due_date && project.due_date > max) max = project.due_date;
+    min = D.add(min, -2); max = D.add(max, 4);
+    const totalDays = D.diff(min, max) + 1;
+    const NAMES_W = 240, ROW = 24, HEAD = 40;
+    const dayW = Math.max(3, Math.min(22, 1420 / totalDays));
+    const W = NAMES_W + totalDays * dayW;
+    const H = HEAD + tasks.length * ROW + 14;
+    const x = (d) => NAMES_W + D.diff(min, d) * dayW;
+    const svg = el('svg', { viewBox: `0 0 ${W} ${H}`, xmlns: 'http://www.w3.org/2000/svg',
+      style: 'font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;background:#fff' });
+    el('rect', { x: 0, y: 0, width: W, height: H, fill: '#fff' }, svg);
+    // weekends
+    if (dayW >= 6) for (let i = 0; i < totalDays; i++) {
+      if (D.isWeekend(D.add(min, i)))
+        el('rect', { x: NAMES_W + i * dayW, y: HEAD, width: dayW,
+          height: H - HEAD - 14, fill: P.weekend }, svg);
+    }
+    // months + ticks
+    let cur = min;
+    while (cur <= max) {
+      const dt = new Date(cur + 'T00:00:00Z');
+      const mEnd = D.fmt(Date.UTC(dt.getUTCFullYear(), dt.getUTCMonth() + 1, 0));
+      const segEnd = mEnd < max ? mEnd : max;
+      const mx = x(cur);
+      if ((D.diff(cur, segEnd) + 1) * dayW > 44)
+        el('text', { x: mx + 5, y: 16, 'font-size': 11, 'font-weight': 600, fill: P.soft }, svg)
+          .textContent = dt.toLocaleDateString(undefined, { month: 'short', year: 'numeric', timeZone: 'UTC' });
+      el('line', { x1: mx, y1: 0, x2: mx, y2: H - 14, stroke: P.line }, svg);
+      cur = D.add(segEnd, 1);
+    }
+    for (let i = 0; i < totalDays; i++) {
+      const dt = new Date(D.add(min, i) + 'T00:00:00Z');
+      if (dayW >= 14) {
+        el('text', { x: NAMES_W + i * dayW + dayW / 2, y: 32, 'font-size': 8,
+          'text-anchor': 'middle', fill: P.soft }, svg).textContent = dt.getUTCDate();
+      } else if (dt.getUTCDay() === 1 && dayW >= 4) {
+        el('text', { x: NAMES_W + i * dayW + 2, y: 32, 'font-size': 8, fill: P.soft }, svg)
+          .textContent = dt.getUTCDate();
+      }
+    }
+    // rows + names
+    for (let r = 0; r <= tasks.length; r++)
+      el('line', { x1: 0, y1: HEAD + r * ROW, x2: W, y2: HEAD + r * ROW,
+        stroke: P.line, 'stroke-width': .6 }, svg);
+    el('line', { x1: NAMES_W - 6, y1: 0, x2: NAMES_W - 6, y2: H - 14, stroke: P.line }, svg);
+    const rowOf = new Map(tasks.map((t, i) => [t.id, i]));
+    // deps under bars
+    for (const d of deps) {
+      if (!rowOf.has(d.pred_id) || !rowOf.has(d.succ_id)) continue;
+      const p = tasks[rowOf.get(d.pred_id)], s = tasks[rowOf.get(d.succ_id)];
+      const isCrit = cpm.get(p.id)?.critical && cpm.get(s.id)?.critical;
+      const x1 = x(p.end) + dayW, y1 = HEAD + rowOf.get(p.id) * ROW + ROW / 2;
+      const x2 = x(s.start), y2 = HEAD + rowOf.get(s.id) * ROW + ROW / 2;
+      const path = x2 >= x1 + 10
+        ? `M ${x1} ${y1} L ${x2 - 5} ${y1} L ${x2 - 5} ${y2} L ${x2} ${y2}`
+        : `M ${x1} ${y1} L ${x1 + 5} ${y1} L ${x1 + 5} ${(y1 + y2) / 2} L ${x2 - 5} ${(y1 + y2) / 2} L ${x2 - 5} ${y2} L ${x2} ${y2}`;
+      el('path', { d: path, fill: 'none', stroke: isCrit ? P.critical : P.soft,
+        'stroke-width': isCrit ? 1.2 : .7, opacity: isCrit ? .9 : .5 }, svg);
+    }
+    // today + due
+    if (today >= min && today <= max) {
+      const tx = x(today) + dayW / 2;
+      el('line', { x1: tx, y1: HEAD - 4, x2: tx, y2: H - 14, stroke: P.accent,
+        'stroke-width': 1.2, 'stroke-dasharray': '3 2' }, svg);
+    }
+    if (project.due_date && project.due_date >= min && project.due_date <= max) {
+      el('line', { x1: x(project.due_date) + dayW, y1: HEAD, x2: x(project.due_date) + dayW,
+        y2: H - 14, stroke: P.watch, 'stroke-width': 1.2 }, svg);
+    }
+    // bars + names
+    tasks.forEach((t, i) => {
+      const yTop = HEAD + i * ROW;
+      const isParent = t._kind === 'parent';
+      const crit = isParent ? t._crit : cpm.get(t.id)?.critical;
+      const nm = el('text', { x: isParent ? 8 : 20, y: yTop + 16, 'font-size': 9.5,
+        'font-weight': isParent ? 700 : 400,
+        fill: t.done ? P.done : P.ink }, svg);
+      nm.textContent = t.name.length > 42 ? t.name.slice(0, 41) + '…' : t.name;
+      const person = t.person_id ? peopleById.get(t.person_id) : null;
+      if (person && !isParent) {
+        el('text', { x: NAMES_W - 12, y: yTop + 16, 'font-size': 8, 'text-anchor': 'end',
+          fill: P.soft }, svg).textContent = initials(person.name);
+      }
+      if (isParent) {
+        const bx = x(t._span.start), bw = (D.diff(t._span.start, t._span.end) + 1) * dayW;
+        el('rect', { x: bx, y: yTop + 8, width: bw, height: 5, rx: 1.5,
+          fill: project.color }, svg);
+        el('path', { d: `M ${bx} ${yTop + 12} l 4 5 l 0 -5 z`, fill: project.color }, svg);
+        el('path', { d: `M ${bx + bw} ${yTop + 12} l -4 5 l 0 -5 z`, fill: project.color }, svg);
+      } else if (t.milestone) {
+        const cx = x(t.start) + dayW / 2, cy = yTop + ROW / 2, r = 5;
+        el('path', { d: `M ${cx} ${cy - r} L ${cx + r} ${cy} L ${cx} ${cy + r} L ${cx - r} ${cy} Z`,
+          fill: t.done ? P.done : (crit ? P.critical : project.color) }, svg);
+      } else {
+        const bx = x(t.start), bw = Math.max(dayW, (D.diff(t.start, t.end) + 1) * dayW);
+        const fill = t.done ? P.done : (crit ? P.critical : project.color);
+        el('rect', { x: bx, y: yTop + 5, width: bw, height: ROW - 10, rx: 3, fill,
+          opacity: t.done ? .45 : .9 }, svg);
+        const prog = t.done ? 0 : Math.min(100, t.progress || 0);
+        if (prog > 0)
+          el('rect', { x: bx, y: yTop + 5, width: Math.max(3, bw * prog / 100),
+            height: ROW - 10, rx: 3, fill: '#000', opacity: .25 }, svg);
+      }
+    });
+    return svg;
+  }
+
+  window.Gantt = { render, renderPortfolio, printSvg };
 })();

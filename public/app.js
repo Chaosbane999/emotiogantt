@@ -353,6 +353,58 @@
     });
   }
 
+  // display list: roots in order, children under their phase
+  function buildDisplay(allTasks, cpm, showsTask, collapsed) {
+    const kidsBy = new Map();
+    for (const t of allTasks) {
+      if (!t.parent_id) continue;
+      if (!kidsBy.has(t.parent_id)) kidsBy.set(t.parent_id, []);
+      kidsBy.get(t.parent_id).push(t);
+    }
+    const out = [];
+    for (const t of allTasks.filter(t => !t.parent_id)) {
+      const kids = kidsBy.get(t.id) || [];
+      if (kids.length) {
+        const visKids = kids.filter(showsTask);
+        if (!visKids.length) continue;
+        out.push({ ...t, _kind: 'parent', _collapsed: collapsed.has(t.id),
+          _span: {
+            start: kids.reduce((a, k) => k.start < a ? k.start : a, kids[0].start),
+            end: kids.reduce((a, k) => k.end > a ? k.end : a, kids[0].end),
+          },
+          _crit: visKids.some(k => cpm.get(k.id)?.critical) });
+        if (!collapsed.has(t.id)) out.push(...visKids.map(k => ({ ...k, _kind: 'child' })));
+      } else if (showsTask(t)) {
+        out.push({ ...t, _kind: 'leaf' });
+      }
+    }
+    return out;
+  }
+
+  // Export PDF: full expanded project rendered print-clean, via the browser's
+  // print-to-PDF (choose "Save as PDF" in the dialog)
+  function exportPdf(p) {
+    const cpm = cpmFor(p.id);
+    const full = buildDisplay(projTasks(p.id), cpm, () => true, new Set());
+    const host = document.createElement('div');
+    host.className = 'print-host';
+    const title = document.createElement('div');
+    title.className = 'print-title';
+    title.innerHTML = `<strong>${esc(p.name)}</strong> — exported ${esc(D.humanFull(D.today()))} · EmotioGantt`;
+    host.appendChild(title);
+    host.appendChild(Gantt.printSvg({
+      tasks: full, deps: projDeps(p.id), cpm, project: p, people: S.people }));
+    document.body.appendChild(host);
+    document.body.classList.add('print-mode');
+    const cleanup = () => {
+      host.remove();
+      document.body.classList.remove('print-mode');
+      window.removeEventListener('afterprint', cleanup);
+    };
+    window.addEventListener('afterprint', cleanup);
+    setTimeout(() => { window.print(); setTimeout(cleanup, 60000); }, 50);
+  }
+
   // ----- Project detail (Gantt) -----
   async function renderProject(pid) {
     setNav('projects');
@@ -371,29 +423,7 @@
     // collapsed phases hide their children but keep the summary bar
     const collKey = `cp_coll_${pid}`;
     const collapsed = new Set(JSON.parse(localStorage.getItem(collKey) || '[]'));
-    const kidsBy = new Map();
-    for (const t of allTasks) {
-      if (!t.parent_id) continue;
-      if (!kidsBy.has(t.parent_id)) kidsBy.set(t.parent_id, []);
-      kidsBy.get(t.parent_id).push(t);
-    }
-    const tasks = [];
-    for (const t of allTasks.filter(t => !t.parent_id)) {
-      const kids = kidsBy.get(t.id) || [];
-      if (kids.length) {
-        const visKids = kids.filter(filter.showsTask);
-        if (!visKids.length) continue;
-        tasks.push({ ...t, _kind: 'parent', _collapsed: collapsed.has(t.id),
-          _span: {
-            start: kids.reduce((a, k) => k.start < a ? k.start : a, kids[0].start),
-            end: kids.reduce((a, k) => k.end > a ? k.end : a, kids[0].end),
-          },
-          _crit: visKids.some(k => cpm.get(k.id)?.critical) });
-        if (!collapsed.has(t.id)) tasks.push(...visKids.map(k => ({ ...k, _kind: 'child' })));
-      } else if (filter.showsTask(t)) {
-        tasks.push({ ...t, _kind: 'leaf' });
-      }
-    }
+    const tasks = buildDisplay(allTasks, cpm, filter.showsTask, collapsed);
 
     // baseline snapshot to compare against
     const snapKey = `cp_snap_${pid}`;
@@ -447,6 +477,7 @@
         </select>
         <button class="btn small" id="saveSnap" title="Save today's plan so you can compare later">📸 Snapshot</button>
         <button class="btn small" id="aiEdit" title="Describe a change in plain words and review before it's applied">✨ AI Edit</button>
+        <button class="btn small" id="exportPdf" title="Print-ready view of the whole plan — choose 'Save as PDF' in the print dialog">⬇ PDF</button>
         <div class="zoom-toggle">
           <button data-z="day" class="${ganttZoom === 'day' ? 'active' : ''}">Day</button>
           <button data-z="week" class="${ganttZoom === 'week' ? 'active' : ''}">Week</button>
@@ -478,6 +509,7 @@
     });
     view.querySelector('#saveSnap').addEventListener('click', () => snapshotDialog(p));
     view.querySelector('#aiEdit').addEventListener('click', () => aiEditDialog(p));
+    view.querySelector('#exportPdf').addEventListener('click', () => exportPdf(p));
 
     if (!allTasks.length) {
       document.getElementById('ganttHost').innerHTML =
@@ -1424,15 +1456,24 @@ or: Add these tasks under the Development phase with sensible durations and depe
   }
 
   // ---------- router ----------
+  // re-rendering the same view (after a drag, edit, filter change…) keeps the
+  // page's scroll position; actual navigation starts at the top
+  let lastRenderedHash = null;
   function route() {
     const h = location.hash || '#/today';
+    const keepScroll = h === lastRenderedHash ? window.scrollY : null;
+    lastRenderedHash = h;
     const m = h.match(/^#\/project\/(\d+)/);
-    if (m) return renderProject(Number(m[1]));
-    if (h.startsWith('#/projects')) return renderProjects();
-    if (h.startsWith('#/timeline')) return renderTimeline();
-    if (h.startsWith('#/people')) return renderPeople();
-    if (h.startsWith('#/activity')) return renderActivity();
-    return renderToday();
+    let r;
+    if (m) r = renderProject(Number(m[1]));
+    else if (h.startsWith('#/projects')) r = renderProjects();
+    else if (h.startsWith('#/timeline')) r = renderTimeline();
+    else if (h.startsWith('#/people')) r = renderPeople();
+    else if (h.startsWith('#/activity')) r = renderActivity();
+    else r = renderToday();
+    Promise.resolve(r).then(() => {
+      if (keepScroll !== null) window.scrollTo(0, keepScroll);
+    }).catch(() => {});
   }
   window.addEventListener('hashchange', route);
 
