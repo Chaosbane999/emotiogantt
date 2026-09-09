@@ -171,9 +171,13 @@ label { display: block; font-size: 13px; font-weight: 550; color: var(--ink-soft
 .zoom-toggle button.active { background: var(--accent-soft); color: var(--accent); }
 .gantt-wrap {
   display: flex; background: var(--surface); border: 1px solid var(--line);
-  border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden;
+  border-radius: var(--radius); box-shadow: var(--shadow);
+  /* clip (not hidden): clips to the rounded corners WITHOUT becoming a scroll
+     container, so position:sticky inside still pins against the window */
+  overflow: clip;
   isolation: isolate; /* keep chart layers stacked beneath the app topbar */
 }
+.gantt-right { flex: 1; min-width: 0; }
 .gantt-names { width: 230px; flex-shrink: 0; border-right: 1px solid var(--line); }
 .col-resizer {
   width: 7px; flex-shrink: 0; cursor: col-resize; margin-left: -4px;
@@ -183,10 +187,11 @@ label { display: block; font-size: 13px; font-weight: 550; color: var(--ink-soft
 .gantt-names .gn-head {
   height: 56px; border-bottom: 1px solid var(--line); display: flex;
   align-items: center; padding: 0 16px; font-size: 13px; color: var(--ink-soft); font-weight: 600;
-  position: relative; z-index: 7; background: var(--surface);
+  position: sticky; top: 0; z-index: 7; background: var(--surface);
 }
 .gantt-head-sticky {
-  position: relative; z-index: 5; background: var(--surface);
+  position: sticky; top: 0; z-index: 5; background: var(--surface);
+  overflow: hidden; /* the wide header svg is clipped and synced horizontally */
 }
 .gn-row {
   height: 40px; display: flex; align-items: center; gap: 8px; padding: 0 10px 0 6px;

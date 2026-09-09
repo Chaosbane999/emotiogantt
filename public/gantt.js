@@ -13,28 +13,27 @@
   const namesWidth = () =>
     Math.max(150, Math.min(440, Number(localStorage.getItem(NAMES_W_KEY)) || 230));
 
-  // keep the date header and "Tasks" cell visible while the page scrolls.
-  // (position:sticky can't work here — the horizontal-scroll wrapper is an
-  // overflow container — so we translate them by hand.)
-  function stickyHeader(wrap, headWrap, gnHead) {
-    const update = () => {
-      if (!wrap.isConnected) return;
-      const topPx = document.querySelector('.topbar')?.offsetHeight || 0;
-      const r = wrap.getBoundingClientRect();
-      const maxOff = Math.max(0, r.height - 160);
-      const off = Math.max(0, Math.min(maxOff, topPx - r.top));
-      const tr = off ? `translateY(${off}px)` : '';
-      headWrap.style.transform = tr;
-      if (gnHead) gnHead.style.transform = tr;
-    };
-    if (window.__egSticky) {
-      window.removeEventListener('scroll', window.__egSticky);
-      window.removeEventListener('resize', window.__egSticky);
-    }
-    window.__egSticky = update;
-    window.addEventListener('scroll', update, { passive: true });
-    window.addEventListener('resize', update, { passive: true });
-    update();
+  // The date header lives OUTSIDE the horizontal scroller so vertical pinning
+  // is native position:sticky (compositor-smooth, no judder). Only the
+  // horizontal position is synced from the scroller.
+  function buildStickyChart(wrap, names, headSvg, bodySvg, scroll) {
+    const topPx = document.querySelector('.topbar')?.offsetHeight || 0;
+    const right = document.createElement('div');
+    right.className = 'gantt-right';
+    const headWrap = document.createElement('div');
+    headWrap.className = 'gantt-head-sticky';
+    headWrap.style.top = topPx + 'px';
+    headWrap.appendChild(headSvg);
+    right.appendChild(headWrap);
+    scroll.appendChild(bodySvg);
+    right.appendChild(scroll);
+    wrap.appendChild(right);
+    const gnHead = names.querySelector('.gn-head');
+    if (gnHead) gnHead.style.top = topPx + 'px';
+    const sync = () => { headSvg.style.transform = `translateX(${-scroll.scrollLeft}px)`; };
+    scroll.addEventListener('scroll', sync, { passive: true });
+    sync();
+    return sync;
   }
 
   function addColResizer(wrap, names, onDone) {
@@ -205,22 +204,14 @@
     wrap.appendChild(names);
     addColResizer(wrap, names, opts.onLayoutChange);
 
-    // ---- scrollable chart: sticky date header + body ----
+    // ---- scrollable chart: native-sticky date header + body ----
     const scroll = document.createElement('div');
     scroll.className = 'gantt-scroll';
-    const headWrap = document.createElement('div');
-    headWrap.className = 'gantt-head-sticky';
-    headWrap.style.width = width + 'px';
     const headSvg = el('svg', { class: 'gantt', width, height: HEAD_H,
       style: 'display:block' });
-    headWrap.appendChild(headSvg);
-    scroll.appendChild(headWrap);
     const svg = el('svg', { class: 'gantt', width, height: bodyH + 12,
       style: 'touch-action:none;user-select:none;-webkit-user-select:none;display:block' });
-    scroll.appendChild(svg);
-    wrap.appendChild(scroll);
-    // the task-name header cell sticks in step with the date header
-    stickyHeader(wrap, headWrap, names.querySelector('.gn-head'));
+    buildStickyChart(wrap, names, headSvg, svg, scroll);
 
     // weekend + day grid
     for (let i = 0; i < totalDays; i++) {
@@ -650,18 +641,11 @@
 
     const scroll = document.createElement('div');
     scroll.className = 'gantt-scroll';
-    const headWrap = document.createElement('div');
-    headWrap.className = 'gantt-head-sticky';
-    headWrap.style.width = width + 'px';
     const headSvg = el('svg', { class: 'gantt', width, height: HEAD_H,
       style: 'display:block' });
-    headWrap.appendChild(headSvg);
-    scroll.appendChild(headWrap);
     const svg = el('svg', { class: 'gantt', width, height: bodyH + 10,
       style: 'display:block' });
-    scroll.appendChild(svg);
-    wrap.appendChild(scroll);
-    stickyHeader(wrap, headWrap, names.querySelector('.gn-head'));
+    buildStickyChart(wrap, names, headSvg, svg, scroll);
 
     let yCursor = 0;
     el('line', { x1: 0, y1: HEAD_H - .5, x2: width, y2: HEAD_H - .5,
