@@ -590,7 +590,7 @@ Rules:
 - Make the MINIMAL set of changes that satisfies the instruction; leave everything else untouched.
 - Use exact task ids from the provided state for existing tasks. Refer to tasks you are creating by their exact name.
 - If someone is unavailable for a period, move only their affected incomplete tasks out of that period, then shift dependent tasks just enough that every finish-to-start dependency stays consistent (a successor starts after its predecessor ends). Say in the summary if the project end moves.
-- When adding subtasks under a phase, fit them inside the phase's window unless told otherwise, give realistic proportional durations, run streams in parallel where the work allows, and add finish-to-start dependencies along the genuinely sequential chains so the critical path is meaningful. Phases are one level deep — a subtask cannot be a parent.
+- When adding subtasks under a phase, fit them inside the phase's window unless told otherwise, give realistic proportional durations, run streams in parallel where the work allows, and add finish-to-start dependencies along the genuinely sequential chains so the critical path is meaningful. Phases are one level deep — a subtask cannot be a parent: "parent" must be a task whose parent_id is null. If the instruction mentions a subtask as the location, use that subtask's own phase as the parent.
 - Prefer people from the people list; a genuinely new name is allowed and will be created.
 - Milestones are single-day (start = end).`;
 
@@ -677,6 +677,15 @@ app.post('/api/ai-edit/apply', (req, res) => {
     const byName = created.get(String(r).toLowerCase());
     return byName || Number(r) || null;
   };
+  // hierarchy is one level deep: if the AI names a subtask as parent, attach
+  // to that subtask's phase instead (otherwise the new task can't render)
+  const phaseLevel = (ref) => {
+    const id = ref !== null && ref !== undefined ? resolveRef(ref) : null;
+    if (!id) return null;
+    const t = db.prepare('SELECT id, parent_id FROM tasks WHERE id=?').get(id);
+    if (!t) return null;
+    return t.parent_id ? t.parent_id : t.id;
+  };
   const personId = (name) => {
     if (!name) return null;
     const p = db.prepare('SELECT id FROM people WHERE lower(name)=lower(?)').get(String(name).trim());
@@ -691,7 +700,7 @@ app.post('/api/ai-edit/apply', (req, res) => {
     try {
       if (o.op === 'create_task') {
         const end = o.milestone ? o.start : (DATE_RE_SRV.test(o.end || '') ? o.end : o.start);
-        const parentId = o.parent !== null && o.parent !== undefined ? resolveRef(o.parent) : null;
+        const parentId = phaseLevel(o.parent);
         const r = db.prepare(
           `INSERT INTO tasks (project_id, name, start, end, done, milestone, person_id, notes, progress, parent_id, sort_order)
            VALUES (?,?,?,?,0,?,?,?,0,?,
@@ -717,7 +726,7 @@ app.post('/api/ai-edit/apply', (req, res) => {
         if (m.end < m.start) m.end = m.start;
         if (f.notes !== undefined) m.notes = f.notes || '';
         if (f.person !== undefined) m.person_id = f.person ? personId(f.person) : null;
-        if (f.parent_task_id !== undefined) m.parent_id = f.parent_task_id ? resolveRef(f.parent_task_id) : null;
+        if (f.parent_task_id !== undefined) m.parent_id = f.parent_task_id ? phaseLevel(f.parent_task_id) : null;
         if (f.progress !== undefined) {
           m.progress = Math.max(0, Math.min(100, Number(f.progress) || 0));
           m.done = m.progress >= 100 ? 1 : 0;
