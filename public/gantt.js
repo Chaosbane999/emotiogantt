@@ -210,6 +210,7 @@
     scroll.className = 'gantt-scroll';
     const headWrap = document.createElement('div');
     headWrap.className = 'gantt-head-sticky';
+    headWrap.style.width = width + 'px';
     const headSvg = el('svg', { class: 'gantt', width, height: HEAD_H,
       style: 'display:block' });
     headWrap.appendChild(headSvg);
@@ -651,6 +652,7 @@
     scroll.className = 'gantt-scroll';
     const headWrap = document.createElement('div');
     headWrap.className = 'gantt-head-sticky';
+    headWrap.style.width = width + 'px';
     const headSvg = el('svg', { class: 'gantt', width, height: HEAD_H,
       style: 'display:block' });
     headWrap.appendChild(headSvg);

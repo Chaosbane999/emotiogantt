@@ -172,6 +172,7 @@ label { display: block; font-size: 13px; font-weight: 550; color: var(--ink-soft
 .gantt-wrap {
   display: flex; background: var(--surface); border: 1px solid var(--line);
   border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden;
+  isolation: isolate; /* keep chart layers stacked beneath the app topbar */
 }
 .gantt-names { width: 230px; flex-shrink: 0; border-right: 1px solid var(--line); }
 .col-resizer {
