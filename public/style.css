@@ -341,6 +341,17 @@ svg.gantt text { font-family: inherit; }
   z-index: 60; pointer-events: none; box-shadow: var(--shadow); max-width: 90vw;
 }
 .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+.toast.action {
+  pointer-events: auto; display: flex; align-items: center; gap: 12px;
+  bottom: 76px; /* sits above a plain toast if both appear */
+}
+.toast.action .btn { flex-shrink: 0; }
+.toast.action .btn:not(.primary) { background: transparent; color: var(--bg); border-color: var(--bg); opacity: .8; }
+
+/* fit zoom: compact rows so long projects need less screen */
+.gantt-wrap.fit .gn-row { height: 28px; font-size: 13px; }
+.gantt-wrap.fit .who { width: 18px; height: 18px; font-size: 9.5px; }
+.gantt-wrap.fit .gn-row .ins { width: 18px; height: 18px; font-size: 12px; }
 
 /* login */
 .login-wrap { display: flex; align-items: center; justify-content: center; min-height: 100vh; }

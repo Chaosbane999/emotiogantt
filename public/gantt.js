@@ -79,8 +79,13 @@
     const { tasks, deps, cpm, project, people, zoom, baseline,
       onTaskClick, onTaskChange, onAddTask, onReorder, onToggleCollapse,
       onPhaseMove, onAddDep, onInsertTask } = opts;
+    const fit = zoom === 'fit';
     let dayW = zoom === 'day' ? 36 : 13;
     const today = D.today();
+    // fit mode compacts rows so long projects need less screen in both directions
+    const rowH = fit ? 28 : ROW_H;
+    const barH = fit ? 16 : BAR_H;
+    const barPad = (rowH - barH) / 2;
 
     // date range
     // week mode shows exactly one Sunday-to-Saturday window
@@ -108,16 +113,17 @@
     const namesW = namesWidth();
     // stretch to fill the available width rather than leaving dead space
     const avail = container.clientWidth - namesW - 8;
+    if (fit && avail > 0) dayW = Math.max(2, avail / totalDays);
     if (avail > 0 && totalDays * dayW < avail) dayW = avail / totalDays;
     const width = totalDays * dayW;
-    const bodyH = tasks.length * ROW_H;
+    const bodyH = tasks.length * rowH;
     const x = (date) => D.diff(min, date) * dayW;
 
     const peopleById = new Map(people.map(p => [p.id, p]));
 
     container.innerHTML = '';
     const wrap = document.createElement('div');
-    wrap.className = 'gantt-wrap';
+    wrap.className = 'gantt-wrap' + (fit ? ' fit' : '');
 
     // ---- left names column ----
     const names = document.createElement('div');
@@ -192,13 +198,13 @@
           row.classList.add('dragging');
         }
         row.style.transform = `translateY(${dy}px)`;
-        const target = Math.max(0, Math.min(tasks.length - 1, idx + Math.round(dy / ROW_H)));
+        const target = Math.max(0, Math.min(tasks.length - 1, idx + Math.round(dy / rowH)));
         rowDrag.target = target;
         rowEls.forEach((r, i) => {
           if (r === row) return;
           let shift = 0;
-          if (idx < target && i > idx && i <= target) shift = -ROW_H;
-          if (idx > target && i < idx && i >= target) shift = ROW_H;
+          if (idx < target && i > idx && i <= target) shift = -rowH;
+          if (idx > target && i < idx && i >= target) shift = rowH;
           r.style.transform = shift ? `translateY(${shift}px)` : '';
         });
       });
@@ -241,8 +247,8 @@
       style: 'touch-action:none;user-select:none;-webkit-user-select:none;display:block' });
     buildStickyChart(wrap, names, headSvg, svg, scroll);
 
-    // weekend + day grid
-    for (let i = 0; i < totalDays; i++) {
+    // weekend + day grid (weekend shading is noise at tiny day widths)
+    if (!fit || dayW >= 7) for (let i = 0; i < totalDays; i++) {
       const date = D.add(min, i);
       if (D.isWeekend(date)) {
         el('rect', { x: i * dayW, y: 0, width: dayW, height: bodyH,
@@ -251,7 +257,7 @@
     }
     // row separators
     for (let r = 0; r <= tasks.length; r++) {
-      el('line', { x1: 0, y1: r * ROW_H, x2: width, y2: r * ROW_H,
+      el('line', { x1: 0, y1: r * rowH, x2: width, y2: r * rowH,
         stroke: css('--line'), 'stroke-width': 1 }, svg);
     }
     el('line', { x1: 0, y1: HEAD_H - .5, x2: width, y2: HEAD_H - .5,
@@ -265,9 +271,12 @@
       const segEnd = monthEnd < max ? monthEnd : max;
       const mx = x(cursor), mw = (D.diff(cursor, segEnd) + 1) * dayW;
       if (mw > 40) {
+        // short month name when the segment is too narrow for the full one
         el('text', { x: mx + 8, y: 20, 'font-size': 12, 'font-weight': 600,
           fill: css('--ink-soft') }, headSvg).textContent =
-          dt.toLocaleDateString(undefined, { month: 'long', year: 'numeric', timeZone: 'UTC' });
+          mw > 95
+            ? dt.toLocaleDateString(undefined, { month: 'long', year: 'numeric', timeZone: 'UTC' })
+            : dt.toLocaleDateString(undefined, { month: 'short', timeZone: 'UTC' });
       }
       el('line', { x1: mx, y1: 0, x2: mx, y2: HEAD_H, stroke: css('--line') }, headSvg);
       el('line', { x1: mx, y1: 0, x2: mx, y2: bodyH, stroke: css('--line') }, svg);
@@ -287,8 +296,9 @@
       } else if (zoom === 'day') {
         el('text', { x: i * dayW + dayW / 2, y: 44, 'font-size': 11,
           'text-anchor': 'middle', fill: css('--ink-soft') }, headSvg).textContent = dt.getUTCDate();
-      } else if (dt.getUTCDay() === 1) {
-        el('text', { x: i * dayW + 3, y: 44, 'font-size': 10,
+      } else if (dt.getUTCDay() === 1 && dayW >= 3.5) {
+        // week ticks; date numbers only when there's room for them
+        if (dayW >= 7) el('text', { x: i * dayW + 3, y: 44, 'font-size': 10,
           fill: css('--ink-soft') }, headSvg).textContent = dt.getUTCDate();
         el('line', { x1: i * dayW, y1: HEAD_H - 8, x2: i * dayW, y2: HEAD_H,
           stroke: css('--line') }, headSvg);
@@ -303,8 +313,8 @@
       if (!p || !s) continue;
       if (weekMode && (p.end < min || p.end > max || s.start < min || s.start > max)) continue;
       const isCrit = cpm.get(p.id)?.critical && cpm.get(s.id)?.critical;
-      const x1 = x(p.end) + dayW, y1 = rowOf.get(p.id) * ROW_H + ROW_H / 2;
-      const x2 = x(s.start), y2 = rowOf.get(s.id) * ROW_H + ROW_H / 2;
+      const x1 = x(p.end) + dayW, y1 = rowOf.get(p.id) * rowH + rowH / 2;
+      const x2 = x(s.start), y2 = rowOf.get(s.id) * rowH + rowH / 2;
       const midx = Math.max(x1 + 8, x2 - 8);
       const path = x2 >= x1 + 16
         ? `M ${x1} ${y1} L ${x2 - 8} ${y1} L ${x2 - 8} ${y2} L ${x2} ${y2}`
@@ -341,9 +351,11 @@
     }
 
     // ---- task bars ----
+    const msR = fit ? 7 : 9;
+    const barFont = fit ? 11 : 12;
     tasks.forEach((t, i) => {
       const c = cpm.get(t.id) || {};
-      const y = i * ROW_H + BAR_PAD;
+      const y = i * rowH + barPad;
 
       // outside the visible week: a quiet hint pointing toward the bar
       const effStart = t._kind === 'parent' ? t._span.start : t.start;
@@ -380,9 +392,9 @@
       if (b && weekMode) b = { ...b,
         start: b.start < min ? min : b.start, end: b.end > max ? max : b.end };
       if (b) {
-        const gy = y + BAR_H + 1.5;
+        const gy = y + barH + 1.5;
         if (b.milestone) {
-          const cx = x(b.start) + dayW / 2, cy = y + BAR_H / 2, r = 9;
+          const cx = x(b.start) + dayW / 2, cy = y + barH / 2, r = msR;
           el('path', {
             d: `M ${cx} ${cy - r} L ${cx + r} ${cy} L ${cx} ${cy + r} L ${cx - r} ${cy} Z`,
             fill: 'none', stroke: css('--ink-soft'), 'stroke-width': 1.4,
@@ -404,13 +416,13 @@
       if (titleLines.length) el('title', {}, g).textContent = titleLines.join('\n');
 
       if (t.milestone) {
-        const cx = x(t.start) + dayW / 2, cy = y + BAR_H / 2, r = 9;
+        const cx = x(t.start) + dayW / 2, cy = y + barH / 2, r = msR;
         el('path', {
           d: `M ${cx} ${cy - r} L ${cx + r} ${cy} L ${cx} ${cy + r} L ${cx - r} ${cy} Z`,
           fill: t.done ? css('--ink-soft') : (c.critical ? css('--critical') : project.color),
           opacity: t.done ? .5 : 1,
         }, g);
-        el('text', { x: cx + r + 6, y: cy + 4, 'font-size': 12, fill: css('--ink-soft'),
+        el('text', { x: cx + r + 6, y: cy + 4, 'font-size': barFont, fill: css('--ink-soft'),
           style: 'pointer-events:none' }, g)
           .textContent = t.name + (hasNote ? ' ✎' : '');
         attachDrag(g, t, 'move', { g });
@@ -425,26 +437,27 @@
         const bx = x(cs), bw = (D.diff(cs, ce) + 1) * dayW;
         const durDays = D.diff(t.start, t.end);
         const fill = t.done ? css('--ink-soft') : (c.critical ? css('--critical') : project.color);
-        const barRect = el('rect', { x: bx, y, width: bw, height: BAR_H, rx: 6, fill,
+        const barRect = el('rect', { x: bx, y, width: bw, height: barH, rx: 6, fill,
           opacity: t.done ? .38 : .92, class: 'bar' }, g);
         // darker fill showing how much of the task is complete
         if (!t.done && prog > 0) {
-          el('rect', { x: bx, y, width: Math.max(6, bw * prog / 100), height: BAR_H,
+          el('rect', { x: bx, y, width: Math.max(6, bw * prog / 100), height: barH,
             rx: 6, fill: '#000', opacity: .28, style: 'pointer-events:none' }, g);
         }
         let critRect = null;
         if (c.critical && !t.done) {
-          critRect = el('rect', { x: bx, y, width: bw, height: BAR_H, rx: 6, fill: 'none',
+          critRect = el('rect', { x: bx, y, width: bw, height: barH, rx: 6, fill: 'none',
             stroke: css('--critical'), 'stroke-width': 2 }, g);
         }
-        const label = el('text', { 'font-size': 12, 'font-weight': 550,
+        const label = el('text', { 'font-size': barFont, 'font-weight': 550,
           style: 'pointer-events:none' }, g);
         label.textContent = t.name + (t.done ? ' ✓' : '') + (hasNote ? '  ✎' : '');
+        const labelY = y + barH / 2 + 4;
         if (bw > t.name.length * 7 + 16) {
-          label.setAttribute('x', bx + 8); label.setAttribute('y', y + 16);
+          label.setAttribute('x', bx + 8); label.setAttribute('y', labelY);
           label.setAttribute('fill', '#fff');
         } else {
-          label.setAttribute('x', bx + bw + 8); label.setAttribute('y', y + 16);
+          label.setAttribute('x', bx + bw + 8); label.setAttribute('y', labelY);
           label.setAttribute('fill', css('--ink-soft'));
         }
         const ctx = { g, barRect, critRect, bx, bw, durDays };
@@ -453,13 +466,13 @@
         for (const side of ['left', 'right']) {
           const hx = side === 'left' ? bx - 6 : bx + bw - 8;
           el('rect', { class: 'grip', 'pointer-events': 'none', rx: 1.5,
-            x: side === 'left' ? bx + 3 : bx + bw - 6, y: y + 5,
-            width: 3, height: BAR_H - 10, fill: '#fff', opacity: 0 }, g);
-          const h = el('rect', { x: hx, y: y - 4, width: 14, height: BAR_H + 8,
+            x: side === 'left' ? bx + 3 : bx + bw - 6, y: y + 4,
+            width: 3, height: barH - 8, fill: '#fff', opacity: 0 }, g);
+          const h = el('rect', { x: hx, y: y - 4, width: 14, height: barH + 8,
             fill: 'transparent', style: 'cursor:ew-resize' }, g);
           attachDrag(h, t, side, ctx);
         }
-        addConnectors(g, t, bx, bx + bw, y + BAR_H / 2);
+        addConnectors(g, t, bx, bx + bw, y + barH / 2);
         g.addEventListener('pointerenter', () => {
           g.querySelectorAll('.grip').forEach(r => r.setAttribute('opacity', .85));
           g.querySelectorAll('.connector').forEach(c => c.setAttribute('opacity', 1));
@@ -483,7 +496,7 @@
         linkDrag = { task, side, origin, target: null,
           path: el('path', { fill: 'none', stroke: css('--accent'), 'stroke-width': 2,
             'stroke-dasharray': '5 4', 'pointer-events': 'none' }, svg),
-          hi: el('rect', { x: 0, y: 0, width, height: ROW_H, fill: css('--accent'),
+          hi: el('rect', { x: 0, y: 0, width, height: rowH, fill: css('--accent'),
             opacity: 0, 'pointer-events': 'none' }, svg) };
         handle.setPointerCapture(e.pointerId);
       });
@@ -491,11 +504,11 @@
         if (!linkDrag || linkDrag.task !== task || linkDrag.side !== side) return;
         const p = svgPoint(e);
         linkDrag.path.setAttribute('d', `M ${origin.x} ${origin.y} L ${p.x} ${p.y}`);
-        const row = Math.floor(p.y / ROW_H);
+        const row = Math.floor(p.y / rowH);
         const t2 = row >= 0 && row < tasks.length ? tasks[row] : null;
         const valid = t2 && t2.id !== task.id && t2._kind !== 'parent';
         linkDrag.target = valid ? t2 : null;
-        linkDrag.hi.setAttribute('y', row * ROW_H);
+        linkDrag.hi.setAttribute('y', row * rowH);
         linkDrag.hi.setAttribute('opacity', valid ? .12 : 0);
       });
       const finish = () => {

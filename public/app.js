@@ -86,6 +86,75 @@
     toast._t = setTimeout(() => t.classList.remove('show'), 3500);
   }
 
+  // toast with one action button (e.g. "Shift them too") — stays up longer
+  function actionToast(msg, btnLabel, fn) {
+    document.querySelectorAll('.toast.action').forEach(t => t.remove());
+    const t = document.createElement('div');
+    t.className = 'toast action show';
+    t.setAttribute('role', 'status');
+    const span = document.createElement('span');
+    span.textContent = msg;
+    const btn = document.createElement('button');
+    btn.className = 'btn small primary';
+    btn.textContent = btnLabel;
+    const dismiss = document.createElement('button');
+    dismiss.className = 'btn small';
+    dismiss.textContent = 'Leave them';
+    t.append(span, btn, dismiss);
+    document.body.appendChild(t);
+    const kill = () => { t.remove(); clearTimeout(timer); };
+    const timer = setTimeout(kill, 12000);
+    btn.addEventListener('click', () => { kill(); fn(); });
+    dismiss.addEventListener('click', kill);
+  }
+
+  // every task that sits downstream of the moved ones via dependencies
+  // (phases bring their subtasks along); done tasks are left in the past
+  function downstreamTasks(movedIds) {
+    const moved = new Set(movedIds);
+    const found = new Map();
+    let frontier = new Set(movedIds);
+    while (frontier.size) {
+      const next = new Set();
+      for (const d of S.deps) {
+        if (!frontier.has(d.pred_id)) continue;
+        if (moved.has(d.succ_id) || found.has(d.succ_id)) continue;
+        const t = S.tasks.find(x => x.id === d.succ_id);
+        if (t) { found.set(t.id, t); next.add(t.id); }
+      }
+      // a shifted phase carries its subtasks with it
+      for (const id of [...next]) {
+        for (const k of S.tasks.filter(x => x.parent_id === id)) {
+          if (!moved.has(k.id) && !found.has(k.id)) { found.set(k.id, k); next.add(k.id); }
+        }
+      }
+      frontier = next;
+    }
+    return [...found.values()].filter(t => !t.done);
+  }
+
+  // after a drag that changed a task's end date, offer to shift its
+  // dependent tasks by the same amount instead of leaving them behind
+  function offerRipple(movedIds, delta, name) {
+    if (!delta) return;
+    const chain = downstreamTasks(movedIds);
+    if (!chain.length) return;
+    const n = Math.abs(delta);
+    const dir = delta > 0 ? 'later' : 'earlier';
+    actionToast(
+      `"${name}" moved ${n} day${n === 1 ? '' : 's'} ${dir} — ${chain.length} task${chain.length === 1 ? '' : 's'} depend${chain.length === 1 ? 's' : ''} on it.`,
+      'Shift them too',
+      async () => {
+        for (const t of chain) {
+          await api('PUT', `/api/tasks/${t.id}`,
+            { start: D.add(t.start, delta), end: D.add(t.end, delta) });
+        }
+        await reload();
+        route();
+        toast(`${chain.length} dependent task${chain.length === 1 ? '' : 's'} shifted ${n} day${n === 1 ? '' : 's'} ${dir}.`);
+      });
+  }
+
   // gentle two-step delete: first click arms the button, second click confirms
   function armDelete(btn, fn) {
     btn.addEventListener('click', () => {
@@ -479,8 +548,9 @@
         <button class="btn small" id="aiEdit" title="Describe a change in plain words and review before it's applied">✨ AI Edit</button>
         <button class="btn small" id="exportPdf" title="Print-ready view of the whole plan — choose 'Save as PDF' in the print dialog">⬇ PDF</button>
         <div class="zoom-toggle">
-          <button data-z="day" class="${ganttZoom === 'day' ? 'active' : ''}">Day</button>
-          <button data-z="week" class="${ganttZoom === 'week' ? 'active' : ''}">Week</button>
+          <button data-z="week" class="${ganttZoom === 'week' ? 'active' : ''}" title="One week, day by day">Week</button>
+          <button data-z="day" class="${ganttZoom === 'day' ? 'active' : ''}" title="Full detail, scroll sideways">Day</button>
+          <button data-z="fit" class="${ganttZoom === 'fit' ? 'active' : ''}" title="Whole project squeezed onto one screen">Fit</button>
         </div>
         <button class="btn small" id="editProj">Settings</button>
       </div>
@@ -529,7 +599,11 @@
       weekStart: ganttZoom === 'week' ? weekStart : null,
       onLayoutChange: () => route(),
       onTaskClick: (t) => editTask(allTasks.find(x => x.id === t.id) || t, p),
-      onTaskChange: (t, dates) => mutate('PUT', `/api/tasks/${t.id}`, dates),
+      onTaskChange: async (t, dates) => {
+        const delta = dates.end ? D.diff(t.end, dates.end) : 0;
+        await mutate('PUT', `/api/tasks/${t.id}`, dates);
+        offerRipple([t.id], delta, t.name);
+      },
       onAddTask: () => editTask(null, p),
       onInsertTask: (t, where) => editTask(null, p, { anchor: t, where }),
       onAddDep: async (pred, succ) => {
@@ -555,6 +629,7 @@
         route();
         const n = Math.abs(days);
         toast(`"${t.name}" and its ${kids.length} subtasks moved ${n} day${n === 1 ? '' : 's'} ${days > 0 ? 'later' : 'earlier'}.`);
+        offerRipple([t.id, ...kids.map(k => k.id)], days, t.name);
       },
       onToggleCollapse: (t) => {
         const c = new Set(JSON.parse(localStorage.getItem(collKey) || '[]'));
