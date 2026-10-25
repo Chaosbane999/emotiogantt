@@ -360,7 +360,7 @@
       <h1>Projects in hand</h1>
       <p class="subtitle">Everything you're juggling, at a glance.</p>
       <div class="chip-row">
-        <button class="btn small" id="importCsv">⬆ Import CSV</button>
+        <button class="btn small" id="importCsv">⬆ Import file</button>
         <button class="btn small" id="aiSetup">✨ Set up with AI</button>
       </div>
       <div class="cards-grid">
@@ -370,7 +370,7 @@
     view.querySelectorAll('[data-open]').forEach(c =>
       c.addEventListener('click', () => { location.hash = `#/project/${c.dataset.open}`; }));
     document.getElementById('newProject').addEventListener('click', () => editProject(null));
-    document.getElementById('importCsv').addEventListener('click', importDialog);
+    document.getElementById('importCsv').addEventListener('click', () => importDialog());
     document.getElementById('aiSetup').addEventListener('click', aiDialog);
   }
 
@@ -559,6 +559,7 @@
         <button class="btn small" id="aiEdit" title="Describe a change in plain words and review before it's applied">✨ AI Edit</button>
         <button class="btn small" id="exportPdf" title="Print-ready view of the whole plan — choose 'Save as PDF' in the print dialog">⬇ PDF</button>
         <button class="btn small" id="exportXlsx" title="Download the plan as an Excel file — same columns as the import template, so it can be imported back">⬇ XLSX</button>
+        <button class="btn small" id="importFile" title="Upload an edited Excel export (or CSV) — update this project to match it, or create a new one">⬆ Import</button>
         <div class="zoom-toggle">
           <button data-z="week" class="${ganttZoom === 'week' ? 'active' : ''}" title="One week, day by day">Week</button>
           <button data-z="day" class="${ganttZoom === 'day' ? 'active' : ''}" title="Full detail, scroll sideways">Day</button>
@@ -604,6 +605,7 @@
       a.remove();
       toast('Excel file downloading…');
     });
+    view.querySelector('#importFile').addEventListener('click', () => importDialog(p));
 
     if (!allTasks.length) {
       document.getElementById('ganttHost').innerHTML =
@@ -1176,8 +1178,9 @@ The project is: [describe your project here]`;
     const col = (...names) => head.findIndex(h => names.some(n => h.startsWith(n)));
     const ci = { name: col('task', 'name'), start: col('start'), end: col('end', 'finish'),
       person: col('person', 'who', 'assigned'), milestone: col('milestone'),
-      deps: col('depends', 'after'), notes: col('note'), parent: col('phase', 'parent') };
-    const cell = (r, i) => (i >= 0 && r[i] !== undefined ? r[i].trim() : '');
+      deps: col('depends', 'after'), notes: col('note'), parent: col('phase', 'parent'),
+      id: col('id'), progress: col('progress'), done: col('done') };
+    const cell = (r, i) => (i >= 0 && r[i] !== undefined ? String(r[i]).trim() : '');
     return rows.slice(1).map(r => ({
       name: cell(r, ci.name),
       start: cell(r, ci.start),
@@ -1187,6 +1190,10 @@ The project is: [describe your project here]`;
       depends_on: cell(r, ci.deps).split(/[;|]/).map(s => s.trim()).filter(Boolean),
       notes: cell(r, ci.notes) || null,
       parent: cell(r, ci.parent) || null,
+      // round-trip extras from exported sheets; absent in hand-made CSVs
+      id: Number(cell(r, ci.id)) || null,
+      progress: cell(r, ci.progress) !== '' ? Number(cell(r, ci.progress)) : undefined,
+      done: cell(r, ci.done) !== '' ? /^(y|yes|true|1|100)$/i.test(cell(r, ci.done)) : undefined,
     })).filter(t => t.name);
   }
 
@@ -1266,53 +1273,96 @@ The project is: [describe your project here]`;
     toast(`Project "${plan.name}" created with ${tasks.length} tasks.`);
   }
 
-  function importDialog() {
+  function importDialog(target) {
     const color = PROJECT_COLORS[S.projects.length % PROJECT_COLORS.length];
     let plan = null;
     openPanel(`
-      <h3>Import a project from CSV</h3>
-      <p class="muted" style="font-size:13px;margin:6px 0 0">Download the template (or copy the
-        instructions into ChatGPT/Claude and let it write the CSV), then choose the file here.
-        You'll see a preview before anything is created.</p>
-      <div class="panel-actions" style="margin-top:14px">
+      <h3>${target ? `Update "${esc(target.name)}" from a file` : 'Import a project from a file'}</h3>
+      <p class="muted" style="font-size:13px;margin:6px 0 0">${target
+        ? `Choose an edited Excel export (or a CSV). You'll see a preview, then either update
+           this project to match the file — today's plan is saved as a snapshot first — or
+           create a separate new project from it.`
+        : `Download the template (or copy the instructions into ChatGPT/Claude and let it
+           write the CSV), then choose the file here. Excel exports from EmotioGantt work too.
+           You'll see a preview before anything is created.`}</p>
+      ${target ? '' : `<div class="panel-actions" style="margin-top:14px">
         <button class="btn small" id="dlTpl">⬇ Download template</button>
         <button class="btn small" id="cpPrompt">Copy AI instructions</button>
-      </div>
-      <label>Project name</label><input id="i_name" placeholder="e.g. Autumn campaign">
-      <label>Due date (optional)</label><input id="i_due" type="date">
-      <label>CSV file</label><input id="i_file" type="file" accept=".csv,text/csv,text/plain">
+      </div>`}
+      <label>File (.xlsx or .csv)</label>
+      <input id="i_file" type="file" accept=".csv,.xlsx,text/csv,text/plain,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">
+      <label>${target ? 'Name if creating a new project' : 'Project name'}</label>
+      <input id="i_name" placeholder="e.g. Autumn campaign">
+      <label>Due date (optional${target ? ', new project only' : ''})</label><input id="i_due" type="date">
       <div id="i_preview"></div>
       <div class="panel-actions">
-        <button class="btn primary grow" id="i_create" disabled>Create project</button>
+        ${target ? `<button class="btn primary grow" id="i_update" disabled>Update this project</button>` : ''}
+        <button class="btn ${target ? '' : 'primary'} grow" id="i_create" disabled>${target ? 'Create new instead' : 'Create project'}</button>
         <button class="btn" id="i_cancel">Cancel</button>
       </div>`);
     panel.querySelector('#i_cancel').addEventListener('click', closePanel);
-    panel.querySelector('#dlTpl').addEventListener('click', () => {
+    const dlTpl = panel.querySelector('#dlTpl');
+    if (dlTpl) dlTpl.addEventListener('click', () => {
       const a = document.createElement('a');
       a.href = URL.createObjectURL(new Blob([CSV_TEMPLATE], { type: 'text/csv' }));
       a.download = 'emotiogantt-template.csv';
       a.click();
       URL.revokeObjectURL(a.href);
     });
-    panel.querySelector('#cpPrompt').addEventListener('click', async () => {
+    const cpPrompt = panel.querySelector('#cpPrompt');
+    if (cpPrompt) cpPrompt.addEventListener('click', async () => {
       await navigator.clipboard.writeText(GPT_PROMPT);
       toast('Instructions copied — paste them into your AI of choice.');
     });
     panel.querySelector('#i_file').addEventListener('change', async (e) => {
       const f = e.target.files[0];
       if (!f) return;
-      const rows = parseCSV(await f.text());
-      if (rows.length < 2) {
-        panel.querySelector('#i_preview').innerHTML =
-          '<p class="err">That file looks empty — is it the right CSV?</p>';
+      const preview = panel.querySelector('#i_preview');
+      let rows;
+      try {
+        if (/\.xlsx$/i.test(f.name)) {
+          const r = await fetch('/api/parse-sheet', { method: 'POST',
+            headers: { 'Content-Type': 'application/octet-stream' },
+            body: await f.arrayBuffer() });
+          if (!r.ok) throw new Error((await r.json()).error || 'could not read that file');
+          rows = (await r.json()).rows;
+        } else {
+          rows = parseCSV(await f.text());
+        }
+      } catch (err) {
+        preview.innerHTML = `<p class="err">${esc(friendlyApiError(err))}</p>`;
+        return;
+      }
+      if (!rows || rows.length < 2) {
+        preview.innerHTML = '<p class="err">That file looks empty — is it the right one?</p>';
         return;
       }
       const nameInput = panel.querySelector('#i_name');
       if (!nameInput.value.trim()) nameInput.value = f.name.replace(/\.[^.]+$/, '');
       plan = { name: '', due_date: null, tasks: csvToTasks(rows) };
-      panel.querySelector('#i_preview').innerHTML =
+      let diffLine = '';
+      if (target && plan.tasks.length) {
+        // what updating would do, so there are no surprises
+        const cur = projTasks(target.id);
+        const curIds = new Set(cur.map(t => t.id));
+        const curNames = new Set(cur.map(t => t.name.trim().toLowerCase()));
+        const matches = plan.tasks.filter(t =>
+          (t.id && curIds.has(t.id)) || curNames.has(t.name.trim().toLowerCase()));
+        const matchedIds = new Set(matches.map(t => t.id).filter(Boolean));
+        const matchedNames = new Set(matches.map(t => t.name.trim().toLowerCase()));
+        const goners = cur.filter(t =>
+          !matchedIds.has(t.id) && !matchedNames.has(t.name.trim().toLowerCase())).length;
+        diffLine = `<div class="dep-row" style="display:block"><strong>If you update:</strong>
+          ${matches.length} existing task${matches.length === 1 ? '' : 's'} refreshed,
+          ${plan.tasks.length - matches.length} added${goners
+            ? `, <span style="color:var(--watch)">${goners} not in the file removed</span>` : ''}.
+          Today's plan is snapshotted first.</div>`;
+      }
+      preview.innerHTML = diffLine +
         planPreviewHTML({ ...plan, name: nameInput.value.trim() || 'Preview' });
       panel.querySelector('#i_create').disabled = !plan.tasks.length;
+      const upd = panel.querySelector('#i_update');
+      if (upd) upd.disabled = !plan.tasks.length;
     });
     panel.querySelector('#i_create').addEventListener('click', async () => {
       const name = panel.querySelector('#i_name').value.trim();
@@ -1321,6 +1371,19 @@ The project is: [describe your project here]`;
       plan.due_date = panel.querySelector('#i_due').value || null;
       closePanel();
       await createProjectFromPlan(plan, color);
+    });
+    const updBtn = panel.querySelector('#i_update');
+    if (updBtn) updBtn.addEventListener('click', async () => {
+      if (!plan || !plan.tasks.length) return;
+      closePanel();
+      try {
+        const r = await api('POST', `/api/projects/${target.id}/apply-plan`, { tasks: plan.tasks });
+        await reload();
+        route();
+        toast(`"${target.name}" updated from the file — ${r.updated} refreshed, ${r.created} added, ${r.removed} removed. The previous plan is saved as a snapshot.`);
+      } catch (e) {
+        toast('Update failed: ' + friendlyApiError(e));
+      }
     });
   }
 
@@ -1556,7 +1619,8 @@ or: Add these tasks under the Development phase with sensible durations and depe
     remove_login: 'removed login for', set_members: 'changed access for',
     change_password: 'changed their password', ai_edit: 'ran an AI edit on',
     reset_requested: 'requested a password reset', reset_link: 'issued a reset link for',
-    password_reset: 'reset their password', restore: 'restored the plan from' };
+    password_reset: 'reset their password', restore: 'restored the plan from',
+    import: 'updated from an imported file' };
   function describeAudit(a) {
     let detail = {};
     try { detail = JSON.parse(a.detail || '{}'); } catch (e) {}

@@ -581,8 +581,10 @@ app.get('/api/projects/:id/export.xlsx', (req, res) => {
     ordered.push(t);
     ordered.push(...tasks.filter(k => k.parent_id === t.id));
   }
+  // the Id column lets an edited sheet update this project in place, even
+  // after tasks are renamed; new rows just leave it blank
   const rows = [
-    ['Task Name', 'Start', 'End', 'Person', 'Milestone', 'Depends On', 'Notes', 'Phase', 'Progress %', 'Done'],
+    ['Task Name', 'Start', 'End', 'Person', 'Milestone', 'Depends On', 'Notes', 'Phase', 'Progress %', 'Done', 'Id'],
     ...ordered.map(t => [
       t.name, t.start, t.end,
       people.get(t.person_id) || '',
@@ -592,14 +594,135 @@ app.get('/api/projects/:id/export.xlsx', (req, res) => {
       t.parent_id ? (nameById.get(t.parent_id) || '') : '',
       t.done ? 100 : (t.progress || 0),
       t.done ? 'yes' : 'no',
+      t.id,
     ]),
   ];
-  const buf = xlsx.workbook(p.name, rows, [34, 12, 12, 16, 10, 30, 40, 22, 11, 7]);
+  const buf = xlsx.workbook(p.name, rows, [34, 12, 12, 16, 10, 30, 40, 22, 11, 7, 6]);
   const fname = (p.name.replace(/[^\w\- ]+/g, '').trim() || 'project').replace(/ +/g, '-');
   res.setHeader('Content-Type',
     'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   res.setHeader('Content-Disposition', `attachment; filename="${fname}.xlsx"`);
   res.send(buf);
+});
+
+// ---- parse an uploaded .xlsx into rows the import dialog can use ----
+app.post('/api/parse-sheet', express.raw({ type: '*/*', limit: '10mb' }), (req, res) => {
+  try {
+    const raw = xlsx.parseSheet(req.body);
+    if (!raw.length) return res.status(400).json({ error: 'no rows found in that sheet' });
+    const head = (raw[0] || []).map(v => String(v ?? '').trim().toLowerCase());
+    const dateCols = new Set(head.map((h, i) =>
+      h.startsWith('start') || h.startsWith('end') || h.startsWith('finish') ? i : -1)
+      .filter(i => i >= 0));
+    // Excel turns edited date cells into day-count numbers; put ISO text back
+    const rows = raw.map(r => {
+      const out = [];
+      for (let i = 0; i < Math.max(r.length, head.length); i++) {
+        const v = r[i];
+        if (typeof v === 'number') out[i] = dateCols.has(i) && v > 20000 && v < 80000
+          ? xlsx.serialToISO(v) : String(v);
+        else out[i] = v === undefined || v === null ? '' : String(v);
+      }
+      return out;
+    });
+    ok(res, { rows });
+  } catch (e) {
+    res.status(400).json({ error: `could not read that file: ${e.message}` });
+  }
+});
+
+// ---- update an existing project in place from an imported plan (the XLSX
+// round-trip): rows match tasks by Id, then by name; the sheet becomes the
+// plan — missing tasks are removed, deps rebuilt, all after a safety snapshot
+app.post('/api/projects/:id/apply-plan', (req, res) => {
+  const p = db.prepare('SELECT * FROM projects WHERE id=?').get(req.params.id);
+  if (!p) return res.status(404).json({ error: 'not found' });
+  if (!canTouchProject(req, p.id)) return forbidden(res);
+  const pid = p.id;
+  const incoming = (req.body.tasks || [])
+    .filter(t => t && t.name && DATE_RE_SRV.test(t.start || '') && DATE_RE_SRV.test(t.end || ''));
+  if (!incoming.length) return res.status(400).json({ error: 'no usable tasks in that plan' });
+  const safety = db.prepare('INSERT INTO snapshots (project_id, name, data) VALUES (?,?,?)')
+    .run(pid, `Before file import ${new Date().toISOString().slice(0, 16).replace('T', ' ')}`,
+      snapshotData(pid));
+  const current = db.prepare('SELECT * FROM tasks WHERE project_id=?').all(pid);
+  const curById = new Map(current.map(t => [t.id, t]));
+  const curByName = new Map(current.map(t => [t.name.trim().toLowerCase(), t]));
+  const personId = (name) => {
+    if (!name) return null;
+    const who = db.prepare('SELECT id FROM people WHERE lower(name)=lower(?)').get(String(name).trim());
+    if (who) return who.id;
+    return db.prepare('INSERT INTO people (name, color) VALUES (?, ?)')
+      .run(String(name).trim(), '#8a94a6').lastInsertRowid;
+  };
+  let updated = 0, created = 0, removed = 0;
+  const used = new Set();
+  const idByRowName = new Map(); // row name -> task id, for phases and deps
+  const rowIds = [];
+  for (const row of incoming) {
+    let t = row.id ? curById.get(Number(row.id)) : null;
+    if (t && t.project_id !== pid) t = null;
+    if (!t) t = curByName.get(row.name.trim().toLowerCase());
+    if (t && used.has(t.id)) t = null; // an existing task matches one row only
+    let end = row.milestone ? row.start : row.end;
+    if (end < row.start) end = row.start;
+    const progress = row.progress !== undefined && row.progress !== null
+      ? Math.max(0, Math.min(100, Number(row.progress) || 0))
+      : (row.done ? 100 : (t ? t.progress : 0));
+    const done = row.done !== undefined ? (row.done ? 1 : 0) : (t ? t.done : 0);
+    const v = {
+      name: row.name, start: row.start, end,
+      milestone: row.milestone ? 1 : 0,
+      person_id: row.person !== undefined ? personId(row.person) : (t ? t.person_id : null),
+      notes: row.notes !== undefined ? (row.notes || '') : (t ? t.notes : ''),
+      progress: progress >= 100 ? 100 : progress,
+      done: progress >= 100 ? 1 : done,
+    };
+    let id;
+    if (t) {
+      db.prepare(
+        'UPDATE tasks SET name=?, start=?, end=?, done=?, milestone=?, person_id=?, notes=?, progress=? WHERE id=?')
+        .run(v.name, v.start, v.end, v.done, v.milestone, v.person_id || null,
+          v.notes, v.progress, t.id);
+      id = t.id; updated++;
+    } else {
+      id = db.prepare(
+        `INSERT INTO tasks (project_id, name, start, end, done, milestone, person_id, notes, progress, parent_id, sort_order)
+         VALUES (?,?,?,?,?,?,?,?,?,NULL,0)`)
+        .run(pid, v.name, v.start, v.end, v.done, v.milestone,
+          v.person_id || null, v.notes, v.progress).lastInsertRowid;
+      created++;
+    }
+    used.add(id);
+    idByRowName.set(row.name.trim().toLowerCase(), id);
+    rowIds.push(id);
+  }
+  // the sheet is the whole plan: tasks it doesn't mention go
+  for (const c of current) {
+    if (used.has(c.id)) continue;
+    db.prepare('UPDATE tasks SET parent_id=NULL WHERE parent_id=?').run(c.id);
+    db.prepare('DELETE FROM tasks WHERE id=?').run(c.id);
+    removed++;
+  }
+  // phases, order, and a rebuilt dependency set from the sheet's columns
+  const resolve = (name) => idByRowName.get(String(name || '').trim().toLowerCase()) || null;
+  incoming.forEach((row, i) => {
+    const id = rowIds[i];
+    let parent = row.parent ? resolve(row.parent) : null;
+    if (parent === id) parent = null;
+    db.prepare('UPDATE tasks SET parent_id=?, sort_order=? WHERE id=?').run(parent, i, id);
+  });
+  db.prepare('DELETE FROM deps WHERE project_id=?').run(pid);
+  const insDep = db.prepare('INSERT OR IGNORE INTO deps (project_id, pred_id, succ_id) VALUES (?,?,?)');
+  incoming.forEach((row, i) => {
+    for (const d of row.depends_on || []) {
+      const pred = resolve(d);
+      if (pred && pred !== rowIds[i]) insDep.run(pid, pred, rowIds[i]);
+    }
+  });
+  audit(req, 'import', 'project', pid, pid,
+    { name: p.name, updated, created, removed });
+  ok(res, { updated, created, removed, safety_id: safety.lastInsertRowid });
 });
 
 // ---- AI edit: propose a change plan for an existing project, then apply it ----

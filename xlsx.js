@@ -138,4 +138,91 @@ ${cols}<sheetData>${body}</sheetData></worksheet>`;
   ]);
 }
 
-module.exports = { workbook };
+// ---- reading: enough of a parser for sheets people edit in Excel/Numbers ----
+function unzip(buf) {
+  let eocd = -1;
+  for (let i = buf.length - 22; i >= Math.max(0, buf.length - 22 - 65535); i--) {
+    if (buf.readUInt32LE(i) === 0x06054b50) { eocd = i; break; }
+  }
+  if (eocd < 0) throw new Error('not a zip/xlsx file');
+  const count = buf.readUInt16LE(eocd + 10);
+  let off = buf.readUInt32LE(eocd + 16);
+  const files = new Map();
+  for (let k = 0; k < count; k++) {
+    if (buf.readUInt32LE(off) !== 0x02014b50) break;
+    const method = buf.readUInt16LE(off + 10);
+    const csize = buf.readUInt32LE(off + 20);
+    const nlen = buf.readUInt16LE(off + 28);
+    const elen = buf.readUInt16LE(off + 30);
+    const clen = buf.readUInt16LE(off + 32);
+    const lho = buf.readUInt32LE(off + 42);
+    const name = buf.toString('utf8', off + 46, off + 46 + nlen);
+    const lnlen = buf.readUInt16LE(lho + 26), lelen = buf.readUInt16LE(lho + 28);
+    const start = lho + 30 + lnlen + lelen;
+    const data = buf.subarray(start, start + csize);
+    files.set(name, method === 8 ? zlib.inflateRawSync(data) : Buffer.from(data));
+    off += 46 + nlen + elen + clen;
+  }
+  return files;
+}
+
+const unesc = (s) => String(s)
+  .replace(/&#x([0-9a-fA-F]+);/g, (_, h) => String.fromCodePoint(parseInt(h, 16)))
+  .replace(/&#(\d+);/g, (_, d) => String.fromCodePoint(Number(d)))
+  .replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+  .replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, '&');
+
+const textRuns = (xml) => (xml.match(/<t(?:\s[^>]*)?>([\s\S]*?)<\/t>/g) || [])
+  .map(t => unesc(t.replace(/^<t[^>]*>/, '').replace(/<\/t>$/, ''))).join('');
+
+const colToIdx = (ref) => {
+  let n = 0;
+  for (const ch of ref) n = n * 26 + (ch.charCodeAt(0) - 64);
+  return n - 1;
+};
+
+// first worksheet -> array of row arrays; strings stay strings, numeric
+// cells come back as numbers (the caller decides which columns are dates)
+function parseSheet(buf) {
+  const files = unzip(buf);
+  const shared = [];
+  const ss = files.get('xl/sharedStrings.xml');
+  if (ss) {
+    for (const si of ss.toString('utf8').match(/<si(?:\s[^>]*)?>[\s\S]*?<\/si>/g) || [])
+      shared.push(textRuns(si));
+  }
+  const sheetFile = [...files.keys()]
+    .filter(n => /^xl\/worksheets\/sheet\d+\.xml$/.test(n))
+    .sort((a, b) => Number(a.match(/\d+/)[0]) - Number(b.match(/\d+/)[0]))[0];
+  if (!sheetFile) throw new Error('no worksheet found in that file');
+  const xml = files.get(sheetFile).toString('utf8');
+  const rows = [];
+  for (const rowXml of xml.match(/<row[^>]*>[\s\S]*?<\/row>/g) || []) {
+    const cells = [];
+    for (const c of rowXml.match(/<c(?:\s[^>]*)?(?:\/>|>[\s\S]*?<\/c>)/g) || []) {
+      const ref = (c.match(/\sr="([A-Z]+)\d+"/) || [])[1];
+      const type = (c.match(/\st="([^"]+)"/) || [])[1];
+      let v;
+      if (type === 'inlineStr') v = textRuns(c);
+      else {
+        const vm = c.match(/<v(?:\s[^>]*)?>([\s\S]*?)<\/v>/);
+        if (vm) {
+          if (type === 's') v = shared[Number(vm[1])] ?? '';
+          else if (type === 'str') v = unesc(vm[1]);
+          else if (type === 'b') v = vm[1] === '1' ? 'yes' : 'no';
+          else v = Number(vm[1]);
+        }
+      }
+      // an empty cell still occupies its slot — cells without r="" refs are positional
+      cells[ref ? colToIdx(ref) : cells.length] = v === undefined ? '' : v;
+    }
+    rows.push(cells);
+  }
+  return rows;
+}
+
+// Excel stores edited dates as day counts from 1899-12-30
+const serialToISO = (n) =>
+  new Date(Date.UTC(1899, 11, 30) + Math.round(n) * 86400000).toISOString().slice(0, 10);
+
+module.exports = { workbook, parseSheet, serialToISO };
