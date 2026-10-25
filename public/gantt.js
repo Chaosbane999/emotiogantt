@@ -78,7 +78,7 @@
   function render(container, opts) {
     const { tasks, deps, cpm, project, people, zoom, baseline,
       onTaskClick, onTaskChange, onAddTask, onReorder, onToggleCollapse,
-      onPhaseMove, onAddDep } = opts;
+      onPhaseMove, onAddDep, onInsertTask } = opts;
     let dayW = zoom === 'day' ? 36 : 13;
     const today = D.today();
 
@@ -139,8 +139,36 @@
           : '') +
         (crit ? '<span class="dot" style="background:var(--critical)" title="On the critical path"></span>' : '<span class="dot" style="background:transparent"></span>') +
         `<span class="nm" title="${escapeHtml(t.name)}">${escapeHtml(t.name)}</span>` +
-        (person ? `<span class="who" style="background:${person.color}" title="${escapeHtml(person.name)}">${initials(person.name)}</span>` : '');
+        (person ? `<span class="who" style="background:${person.color}" title="${escapeHtml(person.name)}">${initials(person.name)}</span>` : '') +
+        (onInsertTask ? '<button class="ins" title="Add a task above or below this one">＋</button>' : '');
       rowEls.push(row);
+      const insBtn = row.querySelector('.ins');
+      if (insBtn) {
+        insBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
+        insBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          document.querySelectorAll('.ins-menu').forEach(m => m.remove());
+          const menu = document.createElement('div');
+          menu.className = 'ins-menu';
+          menu.innerHTML =
+            '<button data-w="above">↑&nbsp; Add task above</button>' +
+            '<button data-w="below">↓&nbsp; Add task below</button>';
+          document.body.appendChild(menu);
+          const r = insBtn.getBoundingClientRect();
+          menu.style.left = Math.max(8, Math.min(window.innerWidth - menu.offsetWidth - 8, r.right - menu.offsetWidth)) + 'px';
+          menu.style.top = (r.bottom + 4) + 'px';
+          const close = () => {
+            menu.remove();
+            document.removeEventListener('pointerdown', onDoc, true);
+          };
+          const onDoc = (ev) => { if (!menu.contains(ev.target)) close(); };
+          setTimeout(() => document.addEventListener('pointerdown', onDoc, true), 0);
+          menu.querySelectorAll('button').forEach(b => b.addEventListener('click', () => {
+            close();
+            onInsertTask(t, b.dataset.w);
+          }));
+        });
+      }
       const caret = row.querySelector('.caret');
       if (caret) {
         caret.addEventListener('pointerdown', (e) => e.stopPropagation());

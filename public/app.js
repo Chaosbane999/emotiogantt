@@ -531,6 +531,7 @@
       onTaskClick: (t) => editTask(allTasks.find(x => x.id === t.id) || t, p),
       onTaskChange: (t, dates) => mutate('PUT', `/api/tasks/${t.id}`, dates),
       onAddTask: () => editTask(null, p),
+      onInsertTask: (t, where) => editTask(null, p, { anchor: t, where }),
       onAddDep: async (pred, succ) => {
         try {
           await api('POST', '/api/deps',
@@ -706,9 +707,21 @@
     });
   }
 
-  function editTask(t, project) {
+  function editTask(t, project, ins) {
     const isNew = !t;
     const today = D.today();
+    // "insert above/below" pre-fills dates and phase from the neighbouring row
+    let insParent = null;
+    if (isNew && ins) {
+      const a = ins.anchor;
+      insParent = (ins.where === 'below' && a._kind === 'parent' && !a._collapsed)
+        ? a.id : (a.parent_id || null);
+      const aStart = a._span ? a._span.start : a.start;
+      const aEnd = a._span ? a._span.end : a.end;
+      t = { name: '', start: aStart, end: insParent === a.id ? D.add(aStart, 2) : aEnd,
+        done: 0, milestone: 0, person_id: null, notes: '', project_id: project.id,
+        parent_id: insParent };
+    }
     t = t || { name: '', start: today, end: D.add(today, 2), done: 0, milestone: 0,
       person_id: null, notes: '', project_id: project.id };
     const others = projTasks(project.id).filter(x => x.id !== t.id);
@@ -803,7 +816,18 @@
         person_id: Number(panel.querySelector('#t_person').value) || null,
         notes: panel.querySelector('#t_notes').value };
       closePanel();
-      if (isNew) await mutate('POST', '/api/tasks', body);
+      if (isNew && ins) {
+        // place the new task right next to its anchor row, not at the bottom
+        const r = await api('POST', '/api/tasks', body);
+        const ordered = projTasks(project.id)
+          .slice().sort((a, b) => a.sort_order - b.sort_order).map(x => x.id);
+        const pos = ordered.indexOf(ins.anchor.id);
+        const at = pos < 0 ? ordered.length : (ins.where === 'above' ? pos : pos + 1);
+        ordered.splice(at, 0, r.id);
+        await mutate('POST', '/api/tasks/reorder', { ids: ordered });
+        toast(`"${body.name}" added ${ins.where} "${ins.anchor.name}".`);
+      }
+      else if (isNew) await mutate('POST', '/api/tasks', body);
       else await mutate('PUT', `/api/tasks/${t.id}`, body);
     });
     if (!isNew) {
