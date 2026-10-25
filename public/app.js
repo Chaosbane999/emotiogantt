@@ -1177,8 +1177,8 @@ The project is: [describe your project here]`;
     const head = rows[0].map(h => h.trim().toLowerCase());
     const col = (...names) => head.findIndex(h => names.some(n => h.startsWith(n)));
     const ci = { name: col('task', 'name'), start: col('start'), end: col('end', 'finish'),
-      person: col('person', 'who', 'assigned'), milestone: col('milestone'),
-      deps: col('depends', 'after'), notes: col('note'), parent: col('phase', 'parent'),
+      person: col('person', 'who', 'assigned', 'lead', 'owner', 'resource'), milestone: col('milestone'),
+      deps: col('depends', 'after', 'predecessor'), notes: col('note'), parent: col('phase', 'parent'),
       id: col('id'), progress: col('progress'), done: col('done') };
     const cell = (r, i) => (i >= 0 && r[i] !== undefined ? String(r[i]).trim() : '');
     return rows.slice(1).map(r => ({
@@ -1200,14 +1200,18 @@ The project is: [describe your project here]`;
   function planIssues(plan) {
     const issues = [];
     const names = new Set(plan.tasks.map(t => t.name.toLowerCase()));
+    const ids = new Set(plan.tasks.map(t => t.id).filter(Boolean));
+    // references can be task names or sheet Id values
+    const known = (ref) => names.has(String(ref).toLowerCase()) ||
+      (/^\d+$/.test(String(ref).trim()) && ids.has(Number(ref)));
     const dateRe = /^\d{4}-\d{2}-\d{2}$/;
     for (const t of plan.tasks) {
       if (!dateRe.test(t.start) || !dateRe.test(t.end))
         issues.push(`"${t.name}": bad or missing date (needs YYYY-MM-DD) — will be skipped`);
       for (const d of t.depends_on || [])
-        if (!names.has(d.toLowerCase()))
+        if (!known(d))
           issues.push(`"${t.name}" depends on unknown task "${d}" — that link will be skipped`);
-      if (t.parent && !names.has(t.parent.toLowerCase()))
+      if (t.parent && !known(t.parent))
         issues.push(`"${t.name}" is in unknown phase "${t.parent}" — it will sit at the top level`);
     }
     return issues;
@@ -1244,25 +1248,35 @@ The project is: [describe your project here]`;
     const pr = await api('POST', '/api/projects',
       { name: plan.name, color, due_date: cleanDate(plan.due_date), notes: '' });
     const idByName = new Map();
+    const idBySheetId = new Map(); // sheet Id column -> created task id
     for (const t of tasks) {
       let end = t.milestone ? t.start : t.end;
       if (end < t.start) end = t.start;
       const r = await api('POST', '/api/tasks', {
         project_id: pr.id, name: t.name, start: t.start, end,
         milestone: t.milestone ? 1 : 0,
+        progress: t.progress !== undefined ? t.progress : (t.done ? 100 : 0),
         person_id: t.person ? peopleMap.get(t.person.trim().toLowerCase()) || null : null,
         notes: t.notes || '' });
       idByName.set(t.name.toLowerCase(), r.id);
+      if (t.id) idBySheetId.set(Number(t.id), r.id);
     }
+    // references in Depends On / Phase may be names or sheet Id values
+    const resolve = (ref) => {
+      const s = String(ref ?? '').trim();
+      if (!s) return null;
+      if (/^\d+$/.test(s) && idBySheetId.has(Number(s))) return idBySheetId.get(Number(s));
+      return idByName.get(s.toLowerCase()) || null;
+    };
     for (const t of tasks) {
+      const myId = idByName.get(t.name.toLowerCase());
       for (const dep of (t.depends_on || [])) {
-        const predId = idByName.get(String(dep).toLowerCase());
-        if (predId) await api('POST', '/api/deps',
-          { project_id: pr.id, pred_id: predId, succ_id: idByName.get(t.name.toLowerCase()) });
+        const predId = resolve(dep);
+        if (predId && predId !== myId) await api('POST', '/api/deps',
+          { project_id: pr.id, pred_id: predId, succ_id: myId });
       }
       if (t.parent) {
-        const parId = idByName.get(t.parent.toLowerCase());
-        const myId = idByName.get(t.name.toLowerCase());
+        const parId = resolve(t.parent);
         if (parId && myId && parId !== myId)
           await api('PUT', `/api/tasks/${myId}`, { parent_id: parId });
       }

@@ -608,8 +608,20 @@ app.get('/api/projects/:id/export.xlsx', (req, res) => {
 // ---- parse an uploaded .xlsx into rows the import dialog can use ----
 app.post('/api/parse-sheet', express.raw({ type: '*/*', limit: '10mb' }), (req, res) => {
   try {
-    const raw = xlsx.parseSheet(req.body);
-    if (!raw.length) return res.status(400).json({ error: 'no rows found in that sheet' });
+    // AI-built workbooks bury the task table: find the first sheet with a
+    // header-looking row (task/name + start) and start from that row
+    const isHeader = (r) => {
+      const cells = (r || []).map(v => String(v ?? '').trim().toLowerCase());
+      return cells.some(c => c.startsWith('task') || c === 'name') &&
+             cells.some(c => c.startsWith('start'));
+    };
+    let raw = null;
+    for (const sheet of xlsx.parseSheets(req.body)) {
+      const at = sheet.rows.slice(0, 30).findIndex(isHeader);
+      if (at >= 0) { raw = sheet.rows.slice(at); break; }
+    }
+    if (!raw || !raw.length)
+      return res.status(400).json({ error: 'no task table found — the sheet needs a header row with Task Name and Start columns' });
     const head = (raw[0] || []).map(v => String(v ?? '').trim().toLowerCase());
     const dateCols = new Set(head.map((h, i) =>
       h.startsWith('start') || h.startsWith('end') || h.startsWith('finish') ? i : -1)
@@ -621,7 +633,7 @@ app.post('/api/parse-sheet', express.raw({ type: '*/*', limit: '10mb' }), (req, 
         const v = r[i];
         if (typeof v === 'number') out[i] = dateCols.has(i) && v > 20000 && v < 80000
           ? xlsx.serialToISO(v) : String(v);
-        else out[i] = v === undefined || v === null ? '' : String(v);
+        else out[i] = v === undefined || v === null ? '' : String(v).replace(/\r\n?/g, '\n');
       }
       return out;
     });
@@ -704,8 +716,16 @@ app.post('/api/projects/:id/apply-plan', (req, res) => {
     db.prepare('DELETE FROM tasks WHERE id=?').run(c.id);
     removed++;
   }
-  // phases, order, and a rebuilt dependency set from the sheet's columns
-  const resolve = (name) => idByRowName.get(String(name || '').trim().toLowerCase()) || null;
+  // phases, order, and a rebuilt dependency set from the sheet's columns;
+  // references may be task names or the sheet's Id values
+  const idBySheetId = new Map();
+  incoming.forEach((row, i) => { if (row.id) idBySheetId.set(Number(row.id), rowIds[i]); });
+  const resolve = (ref) => {
+    const s = String(ref ?? '').trim();
+    if (!s) return null;
+    if (/^\d+$/.test(s) && idBySheetId.has(Number(s))) return idBySheetId.get(Number(s));
+    return idByRowName.get(s.toLowerCase()) || null;
+  };
   incoming.forEach((row, i) => {
     const id = rowIds[i];
     let parent = row.parent ? resolve(row.parent) : null;

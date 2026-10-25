@@ -172,8 +172,10 @@ const unesc = (s) => String(s)
   .replace(/&lt;/g, '<').replace(/&gt;/g, '>')
   .replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, '&');
 
-const textRuns = (xml) => (xml.match(/<t(?:\s[^>]*)?>([\s\S]*?)<\/t>/g) || [])
-  .map(t => unesc(t.replace(/^<t[^>]*>/, '').replace(/<\/t>$/, ''))).join('');
+// note: all tag regexes must handle self-closing tags WITH attributes
+// (<c r="G5" s="9"/>) — a naive [^>]*> eats the slash and swallows siblings
+const textRuns = (xml) => (xml.match(/<t\b[^>]*\/>|<t\b[^>]*>[\s\S]*?<\/t>/g) || [])
+  .map(t => t.endsWith('/>') ? '' : unesc(t.replace(/^<t[^>]*>/, '').replace(/<\/t>$/, ''))).join('');
 
 const colToIdx = (ref) => {
   let n = 0;
@@ -181,9 +183,9 @@ const colToIdx = (ref) => {
   return n - 1;
 };
 
-// first worksheet -> array of row arrays; strings stay strings, numeric
+// all worksheets -> [{rows}] in workbook order; strings stay strings, numeric
 // cells come back as numbers (the caller decides which columns are dates)
-function parseSheet(buf) {
+function parseSheets(buf) {
   const files = unzip(buf);
   const shared = [];
   const ss = files.get('xl/sharedStrings.xml');
@@ -191,17 +193,22 @@ function parseSheet(buf) {
     for (const si of ss.toString('utf8').match(/<si(?:\s[^>]*)?>[\s\S]*?<\/si>/g) || [])
       shared.push(textRuns(si));
   }
-  const sheetFile = [...files.keys()]
+  const sheetFiles = [...files.keys()]
     .filter(n => /^xl\/worksheets\/sheet\d+\.xml$/.test(n))
-    .sort((a, b) => Number(a.match(/\d+/)[0]) - Number(b.match(/\d+/)[0]))[0];
-  if (!sheetFile) throw new Error('no worksheet found in that file');
-  const xml = files.get(sheetFile).toString('utf8');
+    .sort((a, b) => Number(a.match(/\d+/)[0]) - Number(b.match(/\d+/)[0]));
+  if (!sheetFiles.length) throw new Error('no worksheet found in that file');
+  return sheetFiles.map(f => ({ rows: sheetRows(files.get(f).toString('utf8'), shared) }));
+}
+function parseSheet(buf) { return parseSheets(buf)[0].rows; }
+
+function sheetRows(xml, shared) {
   const rows = [];
-  for (const rowXml of xml.match(/<row[^>]*>[\s\S]*?<\/row>/g) || []) {
+  for (const rowXml of xml.match(/<row\b[^>]*\/>|<row\b[^>]*>[\s\S]*?<\/row>/g) || []) {
     const cells = [];
-    for (const c of rowXml.match(/<c(?:\s[^>]*)?(?:\/>|>[\s\S]*?<\/c>)/g) || []) {
-      const ref = (c.match(/\sr="([A-Z]+)\d+"/) || [])[1];
-      const type = (c.match(/\st="([^"]+)"/) || [])[1];
+    for (const c of rowXml.match(/<c\b[^>]*\/>|<c\b[^>]*>[\s\S]*?<\/c>/g) || []) {
+      const open = c.slice(0, c.indexOf('>') + 1); // attrs of the <c> tag only
+      const ref = (open.match(/\sr="([A-Z]+)\d+"/) || [])[1];
+      const type = (open.match(/\st="([^"]+)"/) || [])[1];
       let v;
       if (type === 'inlineStr') v = textRuns(c);
       else {
@@ -225,4 +232,4 @@ function parseSheet(buf) {
 const serialToISO = (n) =>
   new Date(Date.UTC(1899, 11, 30) + Math.round(n) * 86400000).toISOString().slice(0, 10);
 
-module.exports = { workbook, parseSheet, serialToISO };
+module.exports = { workbook, parseSheet, parseSheets, serialToISO };
