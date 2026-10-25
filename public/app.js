@@ -557,6 +557,7 @@
         <button class="btn small" id="saveSnap" title="Save today's plan so you can compare later">📸 Snapshot</button>
         <button class="btn small" id="aiEdit" title="Describe a change in plain words and review before it's applied">✨ AI Edit</button>
         <button class="btn small" id="exportPdf" title="Print-ready view of the whole plan — choose 'Save as PDF' in the print dialog">⬇ PDF</button>
+        <button class="btn small" id="exportXlsx" title="Download the plan as an Excel file — same columns as the import template, so it can be imported back">⬇ XLSX</button>
         <div class="zoom-toggle">
           <button data-z="week" class="${ganttZoom === 'week' ? 'active' : ''}" title="One week, day by day">Week</button>
           <button data-z="day" class="${ganttZoom === 'day' ? 'active' : ''}" title="Full detail, scroll sideways">Day</button>
@@ -590,6 +591,15 @@
     view.querySelector('#saveSnap').addEventListener('click', () => snapshotDialog(p));
     view.querySelector('#aiEdit').addEventListener('click', () => aiEditDialog(p));
     view.querySelector('#exportPdf').addEventListener('click', () => exportPdf(p));
+    view.querySelector('#exportXlsx').addEventListener('click', () => {
+      const a = document.createElement('a');
+      a.href = `/api/projects/${p.id}/export.xlsx`;
+      a.download = '';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      toast('Excel file downloading…');
+    });
 
     if (!allTasks.length) {
       document.getElementById('ganttHost').innerHTML =

@@ -4,6 +4,7 @@ const path = require('path');
 const db = require('./db');
 const mcp = require('./mcp');
 const oauth = require('./oauth');
+const xlsx = require('./xlsx');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -557,6 +558,48 @@ Rules:
   } catch (e) {
     res.status(502).json({ error: 'bad_response', detail: String(e.message) });
   }
+});
+
+// ---- Export a project as .xlsx (same columns as the CSV import template,
+// so an exported sheet round-trips straight back through Import) ----
+app.get('/api/projects/:id/export.xlsx', (req, res) => {
+  const p = db.prepare('SELECT * FROM projects WHERE id=?').get(req.params.id);
+  if (!p) return res.status(404).json({ error: 'not found' });
+  if (!canTouchProject(req, p.id)) return forbidden(res);
+  const tasks = db.prepare('SELECT * FROM tasks WHERE project_id=? ORDER BY sort_order').all(p.id);
+  const people = new Map(db.prepare('SELECT id, name FROM people').all().map(x => [x.id, x.name]));
+  const nameById = new Map(tasks.map(t => [t.id, t.name]));
+  const depsBySucc = new Map();
+  for (const d of db.prepare('SELECT pred_id, succ_id FROM deps WHERE project_id=?').all(p.id)) {
+    if (!depsBySucc.has(d.succ_id)) depsBySucc.set(d.succ_id, []);
+    const n = nameById.get(d.pred_id);
+    if (n) depsBySucc.get(d.succ_id).push(n);
+  }
+  // display order: roots by sort_order with each phase's subtasks right under it
+  const ordered = [];
+  for (const t of tasks.filter(t => !t.parent_id)) {
+    ordered.push(t);
+    ordered.push(...tasks.filter(k => k.parent_id === t.id));
+  }
+  const rows = [
+    ['Task Name', 'Start', 'End', 'Person', 'Milestone', 'Depends On', 'Notes', 'Phase', 'Progress %', 'Done'],
+    ...ordered.map(t => [
+      t.name, t.start, t.end,
+      people.get(t.person_id) || '',
+      t.milestone ? 'yes' : 'no',
+      (depsBySucc.get(t.id) || []).join('; '),
+      t.notes || '',
+      t.parent_id ? (nameById.get(t.parent_id) || '') : '',
+      t.done ? 100 : (t.progress || 0),
+      t.done ? 'yes' : 'no',
+    ]),
+  ];
+  const buf = xlsx.workbook(p.name, rows, [34, 12, 12, 16, 10, 30, 40, 22, 11, 7]);
+  const fname = (p.name.replace(/[^\w\- ]+/g, '').trim() || 'project').replace(/ +/g, '-');
+  res.setHeader('Content-Type',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.setHeader('Content-Disposition', `attachment; filename="${fname}.xlsx"`);
+  res.send(buf);
 });
 
 // ---- AI edit: propose a change plan for an existing project, then apply it ----
