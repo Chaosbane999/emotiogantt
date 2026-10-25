@@ -86,6 +86,16 @@
     toast._t = setTimeout(() => t.classList.remove('show'), 3500);
   }
 
+  // gentle nudge instead of silently ignoring the save click
+  function needName(input, what) {
+    if (input.value.trim()) return false;
+    input.classList.add('field-missing');
+    input.focus();
+    toast(`Give the ${what} a name first.`);
+    setTimeout(() => input.classList.remove('field-missing'), 1800);
+    return true;
+  }
+
   // toast with one action button (e.g. "Shift them too") — stays up longer
   function actionToast(msg, btnLabel, fn) {
     document.querySelectorAll('.toast.action').forEach(t => t.remove());
@@ -398,8 +408,8 @@
     }));
     panel.querySelector('#f_cancel').addEventListener('click', closePanel);
     panel.querySelector('#f_save').addEventListener('click', async () => {
+      if (needName(panel.querySelector('#f_name'), 'project')) return;
       const name = panel.querySelector('#f_name').value.trim();
-      if (!name) return;
       const body = { name, color, due_date: panel.querySelector('#f_due').value || null,
         notes: panel.querySelector('#f_notes').value };
       const memberBoxes = [...panel.querySelectorAll('[data-member]')];
@@ -878,8 +888,8 @@
     });
 
     panel.querySelector('#t_save').addEventListener('click', async () => {
+      if (needName(panel.querySelector('#t_name'), 'task')) return;
       const name = panel.querySelector('#t_name').value.trim();
-      if (!name) return;
       let start = startI.value, end = msI.checked ? startI.value : endI.value;
       if (end < start) end = start;
       const parentSel = panel.querySelector('#t_parent');
@@ -1043,8 +1053,8 @@
     }));
     panel.querySelector('#p_cancel').addEventListener('click', closePanel);
     panel.querySelector('#p_save').addEventListener('click', async () => {
+      if (needName(panel.querySelector('#p_name'), 'person')) return;
       const name = panel.querySelector('#p_name').value.trim();
-      if (!name) return;
       closePanel();
       if (isNew) await mutate('POST', '/api/people', { name, color });
       else await mutate('PUT', `/api/people/${p.id}`, { name, color });

@@ -341,6 +341,10 @@ svg.gantt text { font-family: inherit; }
   z-index: 60; pointer-events: none; box-shadow: var(--shadow); max-width: 90vw;
 }
 .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+.field-missing {
+  border-color: var(--critical) !important;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--critical) 22%, transparent) !important;
+}
 .toast.action {
   pointer-events: auto; display: flex; align-items: center; gap: 12px;
   bottom: 76px; /* sits above a plain toast if both appear */
