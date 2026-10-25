@@ -244,10 +244,13 @@ const impl = {
   },
   create_snapshot({ project_id, name }) {
     getProject(project_id);
-    const tasks = db.prepare(
-      'SELECT id, name, start, end, milestone, done FROM tasks WHERE project_id=?').all(project_id);
+    // full-fidelity payload, same shape the web app's snapshots use (restorable)
+    const data = JSON.stringify({
+      tasks: db.prepare('SELECT * FROM tasks WHERE project_id=?').all(project_id),
+      deps: db.prepare('SELECT pred_id, succ_id FROM deps WHERE project_id=?').all(project_id),
+    });
     const r = db.prepare('INSERT INTO snapshots (project_id, name, data) VALUES (?,?,?)')
-      .run(project_id, name || 'Snapshot', JSON.stringify(tasks));
+      .run(project_id, name || 'Snapshot', data);
     return { snapshot_id: r.lastInsertRowid };
   },
 };

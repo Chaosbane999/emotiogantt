@@ -709,11 +709,9 @@ app.post('/api/ai-edit/apply', (req, res) => {
   if (!canTouchProject(req, project_id)) return forbidden(res);
   const { ops } = validateOps(project_id, operations || []);
   // safety net: snapshot the plan before the AI touches it
-  const snapTasks = db.prepare(
-    'SELECT id, name, start, end, milestone, done FROM tasks WHERE project_id=?').all(project_id);
   const snap = db.prepare('INSERT INTO snapshots (project_id, name, data) VALUES (?,?,?)')
     .run(project_id, `Before AI edit ${new Date().toISOString().slice(0, 16).replace('T', ' ')}`,
-      JSON.stringify(snapTasks));
+      snapshotData(project_id));
   const created = new Map();
   const resolveRef = (r) => {
     if (typeof r === 'number') return r;
@@ -809,13 +807,22 @@ app.post('/api/ai-edit/apply', (req, res) => {
   ok(res, { applied, skipped, snapshot_id: snap.lastInsertRowid });
 });
 
+// full-fidelity snapshot payload: every task field plus the dependency set,
+// so a snapshot can be restored, not just compared (older snapshots stored a
+// plain task array with dates/status only — restore handles both shapes)
+function snapshotData(pid) {
+  return JSON.stringify({
+    tasks: db.prepare('SELECT * FROM tasks WHERE project_id=?').all(pid),
+    deps: db.prepare('SELECT pred_id, succ_id FROM deps WHERE project_id=?').all(pid),
+  });
+}
+const snapTaskList = (raw) => Array.isArray(raw) ? raw : (raw.tasks || []);
+
 app.post('/api/snapshots', (req, res) => {
   const { project_id, name } = req.body;
   if (!canTouchProject(req, project_id)) return forbidden(res);
-  const tasks = db.prepare(
-    'SELECT id, name, start, end, milestone, done FROM tasks WHERE project_id=?').all(project_id);
   const r = db.prepare('INSERT INTO snapshots (project_id, name, data) VALUES (?,?,?)')
-    .run(project_id, name || 'Snapshot', JSON.stringify(tasks));
+    .run(project_id, name || 'Snapshot', snapshotData(project_id));
   audit(req, 'create', 'snapshot', r.lastInsertRowid, project_id, { name });
   ok(res, { id: r.lastInsertRowid });
 });
@@ -823,7 +830,89 @@ app.get('/api/snapshots/:id', (req, res) => {
   const s = db.prepare('SELECT * FROM snapshots WHERE id=?').get(req.params.id);
   if (!s) return res.status(404).json({ error: 'not found' });
   if (!canTouchProject(req, s.project_id)) return forbidden(res);
-  ok(res, { ...s, data: JSON.parse(s.data) });
+  // the client's baseline compare expects a flat task list whatever the stored shape
+  ok(res, { ...s, data: snapTaskList(JSON.parse(s.data)) });
+});
+// put the project back exactly as the snapshot recorded it; the plan as it is
+// right now gets saved as its own snapshot first, so a restore is undoable
+app.post('/api/snapshots/:id/restore', (req, res) => {
+  const s = db.prepare('SELECT * FROM snapshots WHERE id=?').get(req.params.id);
+  if (!s) return res.status(404).json({ error: 'not found' });
+  if (!canTouchProject(req, s.project_id)) return forbidden(res);
+  const pid = s.project_id;
+  const raw = JSON.parse(s.data);
+  const snapTasks = snapTaskList(raw);
+  const snapDeps = Array.isArray(raw) ? null : (raw.deps || []);
+  const safety = db.prepare('INSERT INTO snapshots (project_id, name, data) VALUES (?,?,?)')
+    .run(pid, `Before restoring "${s.name}" ${new Date().toISOString().slice(0, 16).replace('T', ' ')}`,
+      snapshotData(pid));
+  const current = db.prepare('SELECT * FROM tasks WHERE project_id=?').all(pid);
+  const curById = new Map(current.map(t => [t.id, t]));
+  const snapIds = new Set(snapTasks.map(t => t.id));
+  let updated = 0, recreated = 0, removed = 0;
+  const skipped = [];
+  for (const t of snapTasks) {
+    try {
+      const cur = curById.get(t.id);
+      const v = {
+        name: t.name, start: t.start, end: t.end,
+        done: t.done ? 1 : 0, milestone: t.milestone ? 1 : 0,
+        // older snapshots lack these fields: keep the task's current values
+        progress: t.progress !== undefined ? t.progress
+          : (t.done ? 100 : Math.min(cur ? (cur.progress || 0) : 0, 99)),
+        person_id: t.person_id !== undefined ? t.person_id : (cur ? cur.person_id : null),
+        notes: t.notes !== undefined ? (t.notes || '') : (cur ? cur.notes : ''),
+        parent_id: t.parent_id !== undefined ? t.parent_id : (cur ? cur.parent_id : null),
+        sort_order: t.sort_order !== undefined ? t.sort_order : (cur ? cur.sort_order : 0),
+      };
+      if (v.parent_id && !snapIds.has(v.parent_id) && !curById.has(v.parent_id)) v.parent_id = null;
+      if (cur) {
+        db.prepare(
+          'UPDATE tasks SET name=?, start=?, end=?, done=?, milestone=?, person_id=?, notes=?, progress=?, parent_id=?, sort_order=? WHERE id=?')
+          .run(v.name, v.start, v.end, v.done, v.milestone, v.person_id || null,
+            v.notes, v.progress || 0, v.parent_id || null, v.sort_order, t.id);
+        updated++;
+      } else {
+        // bring a deleted task back, keeping its old id so phase links and
+        // the snapshot's dependencies still point at the right rows
+        try {
+          db.prepare(
+            `INSERT INTO tasks (id, project_id, name, start, end, done, milestone, person_id, notes, progress, parent_id, sort_order)
+             VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`)
+            .run(t.id, pid, v.name, v.start, v.end, v.done, v.milestone,
+              v.person_id || null, v.notes, v.progress || 0, v.parent_id || null, v.sort_order);
+        } catch (e) {
+          db.prepare(
+            `INSERT INTO tasks (project_id, name, start, end, done, milestone, person_id, notes, progress, parent_id, sort_order)
+             VALUES (?,?,?,?,?,?,?,?,?,?,?)`)
+            .run(pid, v.name, v.start, v.end, v.done, v.milestone,
+              v.person_id || null, v.notes, v.progress || 0, v.parent_id || null, v.sort_order);
+        }
+        recreated++;
+      }
+    } catch (e) {
+      skipped.push(`${t.name}: ${e.message}`);
+    }
+  }
+  // tasks created after the snapshot was taken don't belong in the restored plan
+  for (const c of current) {
+    if (snapIds.has(c.id)) continue;
+    db.prepare('UPDATE tasks SET parent_id=NULL WHERE parent_id=?').run(c.id);
+    db.prepare('DELETE FROM deps WHERE project_id=? AND (pred_id=? OR succ_id=?)').run(pid, c.id, c.id);
+    db.prepare('DELETE FROM tasks WHERE id=?').run(c.id);
+    removed++;
+  }
+  const alive = new Set(db.prepare('SELECT id FROM tasks WHERE project_id=?').all(pid).map(r => r.id));
+  if (snapDeps) {
+    // full snapshot: the dependency set is part of the recorded plan
+    db.prepare('DELETE FROM deps WHERE project_id=?').run(pid);
+    const ins = db.prepare('INSERT OR IGNORE INTO deps (project_id, pred_id, succ_id) VALUES (?,?,?)');
+    for (const d of snapDeps)
+      if (alive.has(d.pred_id) && alive.has(d.succ_id)) ins.run(pid, d.pred_id, d.succ_id);
+  }
+  audit(req, 'restore', 'snapshot', s.id, pid,
+    { name: s.name, updated, recreated, removed, skipped: skipped.length });
+  ok(res, { updated, recreated, removed, skipped, safety_id: safety.lastInsertRowid });
 });
 app.delete('/api/snapshots/:id', (req, res) => {
   const s = db.prepare('SELECT * FROM snapshots WHERE id=?').get(req.params.id);

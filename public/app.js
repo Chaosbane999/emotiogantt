@@ -554,6 +554,7 @@
           ${mySnaps.map(s =>
             `<option value="${s.id}" ${s.id === snapId ? 'selected' : ''}>vs ${esc(s.name)}</option>`).join('')}
         </select>
+        ${snapId ? `<button class="btn small" id="restoreSnap" title="Put the plan back exactly as it was in this snapshot — today's plan is saved as a snapshot first">⟲ Restore</button>` : ''}
         <button class="btn small" id="saveSnap" title="Save today's plan so you can compare later">📸 Snapshot</button>
         <button class="btn small" id="aiEdit" title="Describe a change in plain words and review before it's applied">✨ AI Edit</button>
         <button class="btn small" id="exportPdf" title="Print-ready view of the whole plan — choose 'Save as PDF' in the print dialog">⬇ PDF</button>
@@ -589,6 +590,9 @@
       route();
     });
     view.querySelector('#saveSnap').addEventListener('click', () => snapshotDialog(p));
+    const restoreBtn = view.querySelector('#restoreSnap');
+    if (restoreBtn) armDelete(restoreBtn, () =>
+      restoreSnapshot(snapId, snapName, snapKey));
     view.querySelector('#aiEdit').addEventListener('click', () => aiEditDialog(p));
     view.querySelector('#exportPdf').addEventListener('click', () => exportPdf(p));
     view.querySelector('#exportXlsx').addEventListener('click', () => {
@@ -713,6 +717,22 @@
     });
   }
 
+  async function restoreSnapshot(snapId, snapName, snapKey) {
+    try {
+      const r = await api('POST', `/api/snapshots/${snapId}/restore`);
+      if (snapKey) localStorage.removeItem(snapKey); // stop comparing against itself
+      await reload();
+      route();
+      const bits = [];
+      if (r.updated) bits.push(`${r.updated} task${r.updated === 1 ? '' : 's'} put back`);
+      if (r.recreated) bits.push(`${r.recreated} brought back`);
+      if (r.removed) bits.push(`${r.removed} newer task${r.removed === 1 ? '' : 's'} removed`);
+      toast(`Plan restored to "${snapName}" — ${bits.join(', ') || 'no changes needed'}. Today's plan was saved as a snapshot first.`);
+    } catch (e) {
+      toast('Restore failed: ' + e.message);
+    }
+  }
+
   function snapshotDialog(p) {
     const mySnaps = S.snapshots.filter(s => s.project_id === p.id);
     openPanel(`
@@ -729,6 +749,7 @@
         <h3 style="margin-top:30px;font-size:15px">Saved snapshots</h3>
         ${mySnaps.map(s => `<div class="dep-row">
           <span class="grow">${esc(s.name)} · ${D.human(s.created_at)}</span>
+          <button data-restsnap="${s.id}" data-snapname="${esc(s.name)}" title="Restore the plan to this snapshot">⟲</button>
           <button data-delsnap="${s.id}" title="Delete snapshot">✕</button>
         </div>`).join('')}` : ''}`);
     panel.querySelector('#s_cancel').addEventListener('click', closePanel);
@@ -743,6 +764,11 @@
         closePanel();
         await mutate('DELETE', `/api/snapshots/${b.dataset.delsnap}`);
         toast('Snapshot deleted.');
+      }));
+    panel.querySelectorAll('[data-restsnap]').forEach(b =>
+      armDelete(b, () => {
+        closePanel();
+        restoreSnapshot(Number(b.dataset.restsnap), b.dataset.snapname, `cp_snap_${p.id}`);
       }));
   }
 
@@ -1530,7 +1556,7 @@ or: Add these tasks under the Development phase with sensible durations and depe
     remove_login: 'removed login for', set_members: 'changed access for',
     change_password: 'changed their password', ai_edit: 'ran an AI edit on',
     reset_requested: 'requested a password reset', reset_link: 'issued a reset link for',
-    password_reset: 'reset their password' };
+    password_reset: 'reset their password', restore: 'restored the plan from' };
   function describeAudit(a) {
     let detail = {};
     try { detail = JSON.parse(a.detail || '{}'); } catch (e) {}
